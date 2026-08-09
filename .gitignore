@@ -1,0 +1,30 @@
+# Node
+node_modules/
+dist/
+
+# Environment
+.env
+.env.*
+!.env.example
+!.env.test
+
+# Build outputs
+.output
+.vercel
+.netlify
+.wrangler
+.svelte-kit/
+/build
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Vite
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# Misc
+.claude/
+.codex
+uploads/

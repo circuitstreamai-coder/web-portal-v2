@@ -1,0 +1,1 @@
+export { lookupPincode } from "./pincode";
