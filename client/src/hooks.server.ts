@@ -28,6 +28,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 
     const proxyHeaders = new Headers(event.request.headers);
     proxyHeaders.delete('host');
+    proxyHeaders.delete('accept-encoding');
 
     const response = await fetch(target, {
       method: event.request.method,
@@ -39,10 +40,14 @@ export const handle: Handle = async ({ event, resolve }) => {
       duplex: 'half',
     });
 
+    const responseHeaders = new Headers(response.headers);
+    responseHeaders.delete('content-encoding');
+    responseHeaders.delete('content-length');
+
     return new Response(response.body, {
       status: response.status,
       statusText: response.statusText,
-      headers: response.headers,
+      headers: responseHeaders,
     });
   }
 
