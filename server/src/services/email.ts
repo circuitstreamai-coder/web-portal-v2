@@ -1,7 +1,25 @@
 import nodemailer from "nodemailer";
+import { Resend } from "resend";
+
+const smtpPort = Number(process.env.SMTP_PORT ?? 587);
+const smtpSecure =
+  process.env.SMTP_SECURE === "true" || smtpPort === 465;
+const smtpHost = process.env.SMTP_HOST ?? "smtp.gmail.com";
+const smtpServername = process.env.SMTP_SERVERNAME ?? "smtp.gmail.com";
+const resend = process.env.RESEND_API_KEY
+  ? new Resend(process.env.RESEND_API_KEY)
+  : null;
 
 const transporter = nodemailer.createTransport({
-  service: "gmail",
+  host: smtpHost,
+  port: smtpPort,
+  secure: smtpSecure,
+  tls: {
+    servername: smtpServername,
+  },
+  connectionTimeout: 10_000,
+  greetingTimeout: 10_000,
+  socketTimeout: 15_000,
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
@@ -16,6 +34,18 @@ export async function sendEmail(opts: {
   html: string;
 }) {
   try {
+    if (resend) {
+      const { error } = await resend.emails.send({
+        from: FROM,
+        to: opts.to,
+        subject: opts.subject,
+        html: opts.html,
+      });
+
+      if (error) throw error;
+      return;
+    }
+
     await transporter.sendMail({
       from: FROM,
       to: opts.to,
