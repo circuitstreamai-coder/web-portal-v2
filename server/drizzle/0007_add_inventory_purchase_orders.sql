@@ -14,5 +14,5 @@ CREATE TABLE IF NOT EXISTS "inventory"."purchase_orders" (
   "created_at" timestamp (3) DEFAULT now() NOT NULL,
   "updated_at" timestamp (3),
   CONSTRAINT "purchase_orders_attachment_file_id_files_id_fk" FOREIGN KEY ("attachment_file_id") REFERENCES "ticket"."files"("id") ON DELETE restrict ON UPDATE cascade,
-  CONSTRAINT "purchase_orders_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "auth"."users"("id") ON DELETE set null ON UPDATE cascade
+  CONSTRAINT "purchase_orders_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "portal"."users"("id") ON DELETE set null ON UPDATE cascade
 );
