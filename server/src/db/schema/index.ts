@@ -2,6 +2,7 @@ export * from "./auth/roles";
 export * from "./auth/users";
 export * from "./auth/userRoles";
 export * from "./auth/notifications";
+export * from "./auth/emailOtpChallenges";
 
 export * from "./ticket/customers";
 export * from "./ticket/engineerProfiles";
