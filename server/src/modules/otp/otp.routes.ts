@@ -1,10 +1,9 @@
 import type { FastifyInstance } from "fastify";
-import { saveOtp, verifyOtp } from "./otp-store.js";
+import { saveOtp, verifyOtp, type OtpFlow } from "./otp-store.js";
+import { createEmailVerificationProof } from "./verification-proof.js";
 import { isEmailAvailable } from "../onboarding/onboarding.service.js";
 import { sendEmail, otpEmail } from "../../services/email.js";
 import { checkRateLimit, normalizeIdentity } from "../../utils/request-limiter.js";
-
-type OtpFlow = "customer" | "engineer";
 
 function generateOtp(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -46,7 +45,7 @@ export async function otpRoutes(app: FastifyInstance) {
     }
 
     const otp = generateOtp();
-    saveOtp(normalizedEmail, otp);
+    saveOtp(normalizedEmail, otp, flow);
 
     try {
       await sendEmail({ to: normalizedEmail, ...otpEmail(otp) });
@@ -65,11 +64,14 @@ export async function otpRoutes(app: FastifyInstance) {
       return reply.code(400).send({ message: "Email and OTP are required." });
     }
 
-    const valid = verifyOtp(email, otp);
-    if (!valid) {
+    const flow = verifyOtp(email, otp);
+    if (!flow) {
       return reply.code(400).send({ message: "Invalid or expired OTP." });
     }
 
-    return reply.send({ message: "Verified." });
+    return reply.send({
+      message: "Verified.",
+      verificationToken: createEmailVerificationProof(email, flow),
+    });
   });
 }

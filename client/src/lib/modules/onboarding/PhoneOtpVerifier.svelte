@@ -3,7 +3,7 @@
     onVerified,
     flow,
   }: {
-    onVerified: (email: string) => void;
+    onVerified: (email: string, verificationToken: string) => void;
     flow: "customer" | "engineer";
   } = $props();
 
@@ -69,7 +69,8 @@
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.message ?? "Invalid OTP.");
-      onVerified(email);
+      if (!data?.verificationToken) throw new Error("Verification proof was not returned.");
+      onVerified(email, data.verificationToken);
     } catch {
       error = "Invalid or expired OTP. Please try again.";
       otp = "";

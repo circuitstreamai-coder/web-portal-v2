@@ -6,36 +6,29 @@
   NODE_VERSION = "20"
 
 # Proxy API requests to the backend (Railway).
-# Set PUBLIC_API_URL as a Netlify env var to your Railway domain.
+# These redirects are only used for a Netlify deployment. The Vercel deployment
+# uses PRIVATE_API_BASE_URL through src/hooks.server.ts instead.
 [[redirects]]
   from = "/graphql"
-  to = "https://innoserve-web-api-production.up.railway.app/graphql"
+  to = "https://api-production-7469.up.railway.app/graphql"
   status = 200
   force = true
 
 [[redirects]]
   from = "/upload"
-  to = "https://innoserve-web-api-production.up.railway.app/upload"
+  to = "https://api-production-7469.up.railway.app/upload"
   status = 200
   force = true
 
 [[redirects]]
   from = "/file/*"
-  to = "https://innoserve-web-api-production.up.railway.app/file/:splat"
-  status = 200
-  force = true
-
-# SvelteKit-handled OTP routes — must come before the /api/* catch-all
-[[redirects]]
-  from = "/api/otp/*"
-  to = "/.netlify/functions/sveltekit-render"
+  to = "https://api-production-7469.up.railway.app/file/:splat"
   status = 200
   force = true
 
 # Auth REST endpoints (Fastify JWT)
 [[redirects]]
   from = "/api/*"
-  to = "https://innoserve-web-api-production.up.railway.app/api/:splat"
+  to = "https://api-production-7469.up.railway.app/api/:splat"
   status = 200
   force = true
-

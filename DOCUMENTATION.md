@@ -581,7 +581,7 @@ Additional states:
 ### Frontend (`web-portal/.env`)
 | Variable | Default | Description |
 |---|---|---|
-| `PRIVATE_API_BASE_URL` | `https://innoserve-web-api-production.up.railway.app` | Railway API base URL |
+| `PRIVATE_API_BASE_URL` | `https://api-production-7469.up.railway.app` | Railway API base URL |
 
 ### Backend (`innoserve-api-test/.env`)
 | Variable | Required | Description |

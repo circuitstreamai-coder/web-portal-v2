@@ -23,13 +23,17 @@ import { checkEmailRoutes } from "../modules/check-email/check-email.routes.js";
 import { seedUsers } from "../db/seed.js";
 import { COOKIE_NAME } from "../modules/auth/auth.schema.js";
 import type { JwtPayload } from "../modules/auth/auth.schema.js";
+import { pool } from "../db/index.js";
+import { isEmailConfigured } from "../services/email.js";
 
 export async function createServer() {
   const app = Fastify({ logger: true });
 
   // ── Plugins ───────────────────────────────────────────────────────────────
   await app.register(cors, {
-    origin: process.env.CORS_ORIGIN ?? "http://localhost:5173",
+    origin: process.env.CORS_ORIGIN
+      ? process.env.CORS_ORIGIN.split(",").map((origin) => origin.trim())
+      : "http://localhost:5173",
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type"],
@@ -75,6 +79,18 @@ export async function createServer() {
       ok: true,
       service: "innoserve-api-test",
     };
+  });
+
+  app.get("/ready", async (_request, reply) => {
+    try {
+      await pool.query("select 1");
+      if (!isEmailConfigured()) throw new Error("Email provider is not configured");
+
+      return { ok: true, service: "innoserve-api-test" };
+    } catch (err) {
+      app.log.error({ err }, "Readiness check failed");
+      return reply.code(503).send({ ok: false, service: "innoserve-api-test" });
+    }
   });
 
   // ── Dev routes (non-production only) ─────────────────────────────────────

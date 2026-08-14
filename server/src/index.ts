@@ -1,5 +1,6 @@
 import { createServer } from "./servers/yoga-http.js";
 import { seedUsers } from "./db/seed.js";
+import { assertProductionConfiguration } from "./config/production.js";
 
 function shouldSeedOnStartup() {
   if (process.env.SEED_ON_STARTUP) {
@@ -10,6 +11,7 @@ function shouldSeedOnStartup() {
 }
 
 async function main() {
+  assertProductionConfiguration();
   const app = await createServer();
 
   if (shouldSeedOnStartup()) {

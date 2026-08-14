@@ -9,6 +9,7 @@ import { uploadFile } from "$lib/api/upload";
 // ── Input shape (mirrors the frontend form) ─────────────────────────────────
 
 export interface EngineerOnboardingFormData {
+  verificationToken?: string;
   // Basic Details
   fullName: string;
   phone: string;
@@ -35,6 +36,7 @@ export interface EngineerOnboardingFormData {
 // ── GraphQL input / response types ──────────────────────────────────────────
 
 export interface EngineerOnboardingInput {
+  verificationToken?: string;
   fullName: string;
   phone: string;
   email: string;
@@ -98,6 +100,9 @@ export async function submitEngineerOnboarding(
     ]);
 
   const input: EngineerOnboardingInput = {
+    ...(formData.verificationToken
+      ? { verificationToken: formData.verificationToken }
+      : {}),
     fullName: formData.fullName,
     phone: formData.phone,
     email: formData.email,

@@ -57,6 +57,7 @@
   let referenceId = $state("");
   let termsAccepted = $state(false);
   let phoneGateCleared = $state(false);
+  let verificationToken = $state("");
   let pincodeLoading = $state(false);
 
   async function handlePincodeInput(pincode: string) {
@@ -285,6 +286,7 @@
     isSubmitting = true;
     try {
       const result = await submitEngineerOnboarding({
+        verificationToken,
         fullName: form.fullName,
         phone: form.phone,
         email: form.email,
@@ -410,8 +412,9 @@
     <!-- ── Phone Verification Gate ── -->
     <PhoneOtpVerifier
       flow="engineer"
-      onVerified={(email) => {
+      onVerified={(email, token) => {
         form.email = email;
+        verificationToken = token;
         phoneGateCleared = true;
         window.scrollTo({ top: 0, behavior: "smooth" });
       }}

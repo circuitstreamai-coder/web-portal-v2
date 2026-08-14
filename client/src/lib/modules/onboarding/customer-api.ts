@@ -7,6 +7,7 @@ import { gqlRequest } from "$lib/api/graphql";
 // ── Input shape (mirrors the frontend form) ─────────────────────────────────
 
 export interface CustomerOnboardingFormData {
+  verificationToken: string;
   // Business Details
   customerName: string;
   companyName: string;
@@ -26,6 +27,7 @@ export interface CustomerOnboardingFormData {
 // ── GraphQL input / response types ──────────────────────────────────────────
 
 export interface CustomerOnboardingInput {
+  verificationToken: string;
   customerName: string;
   companyName: string;
   contactPersonName: string;
@@ -70,6 +72,7 @@ export async function submitCustomerOnboarding(
   formData: CustomerOnboardingFormData,
 ): Promise<CustomerOnboardingResult> {
   const input: CustomerOnboardingInput = {
+    verificationToken: formData.verificationToken,
     customerName: formData.customerName,
     companyName: formData.companyName,
     contactPersonName: formData.contactPersonName,

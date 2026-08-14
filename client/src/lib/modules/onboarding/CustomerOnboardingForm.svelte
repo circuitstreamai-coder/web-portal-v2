@@ -58,6 +58,7 @@
   let hasSecondaryContact = $state(false);
   // Phone is verified before the form wizard is shown
   let phoneGateCleared = $state(false);
+  let verificationToken = $state("");
   let pincodeLoading = $state(false);
 
   async function handlePincodeInput(pincode: string) {
@@ -143,6 +144,7 @@
     isSubmitting = true;
     try {
       const result = await submitCustomerOnboarding({
+        verificationToken,
         customerName: form.customerName,
         companyName: form.companyName,
         contactPersonName: form.contactPersonName,
@@ -264,8 +266,9 @@
     <!-- ── Phone Verification Gate ── -->
     <PhoneOtpVerifier
       flow="customer"
-      onVerified={(email) => {
+      onVerified={(email, token) => {
         form.email = email;
+        verificationToken = token;
         phoneGateCleared = true;
         window.scrollTo({ top: 0, behavior: "smooth" });
       }}

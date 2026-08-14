@@ -1,9 +1,14 @@
 import type { Handle } from '@sveltejs/kit';
+import { dev } from '$app/environment';
 import { env } from '$env/dynamic/private';
 
-const RAILWAY_BASE =
-  env.PRIVATE_API_BASE_URL ??
-  'https://innoserve-web-api-production.up.railway.app';
+function getApiBase() {
+  const configuredBase = env.PRIVATE_API_BASE_URL?.trim();
+  if (configuredBase) return configuredBase.replace(/\/$/, '');
+  if (dev) return 'http://localhost:4000';
+
+  throw new Error('PRIVATE_API_BASE_URL is required in production');
+}
 
 // Routes handled by SvelteKit itself — must not be forwarded to Railway.
 const INTERNAL_API_PREFIXES = [
@@ -24,7 +29,7 @@ export const handle: Handle = async ({ event, resolve }) => {
   const { pathname, search } = event.url;
 
   if (shouldProxy(pathname)) {
-    const target = `${RAILWAY_BASE}${pathname}${search}`;
+    const target = `${getApiBase()}${pathname}${search}`;
 
     const proxyHeaders = new Headers(event.request.headers);
     proxyHeaders.delete('host');

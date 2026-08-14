@@ -5,6 +5,7 @@ import {
   isEmailAvailable,
 } from "../../../modules/onboarding/onboarding.service.js";
 import type { Context } from "../../../servers/context.js";
+import { isEmailVerificationProofValid } from "../../../modules/otp/verification-proof.js";
 
 export const typeDefs = `
   type OnboardingResult {
@@ -15,6 +16,7 @@ export const typeDefs = `
   }
 
   input EngineerOnboardingInput {
+    verificationToken: String
     fullName: String!
     phone: String!
     email: String!
@@ -34,6 +36,7 @@ export const typeDefs = `
   }
 
   input CustomerOnboardingInput {
+    verificationToken: String!
     customerName: String!
     companyName: String!
     contactPersonName: String!
@@ -96,17 +99,36 @@ export const resolvers = {
     submitEngineerOnboarding: async (
       _: unknown,
       { input }: { input: any },
-    ) => submitEngineerOnboarding(input),
+      ctx: Context,
+    ) => {
+      const canCreateDirectly =
+        ctx.user && ["super_admin", "national_head"].includes(ctx.user.role);
+      if (
+        !canCreateDirectly &&
+        !isEmailVerificationProofValid(input.verificationToken, input.email, "engineer")
+      ) {
+        throw new Error("Email verification is required or has expired");
+      }
+      return submitEngineerOnboarding(input);
+    },
     submitCustomerOnboarding: async (
       _: unknown,
       { input }: { input: any },
-    ) => submitCustomerOnboarding(input),
+    ) => {
+      if (!isEmailVerificationProofValid(input.verificationToken, input.email, "customer")) {
+        throw new Error("Email verification is required or has expired");
+      }
+      return submitCustomerOnboarding(input);
+    },
     bulkCreateEngineers: async (
       _: unknown,
       { engineers }: { engineers: any[] },
       ctx: Context,
     ) => {
-      if (!ctx.user) throw { statusCode: 401, message: "Unauthorized" };
+      if (!ctx.user) throw new Error("Unauthorized");
+      if (!["super_admin", "national_head"].includes(ctx.user.role)) {
+        throw new Error("Forbidden");
+      }
       return bulkCreateEngineers(engineers);
     },
   },

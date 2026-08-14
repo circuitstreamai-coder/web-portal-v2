@@ -468,10 +468,7 @@ export async function submitCustomerOnboarding(input: CustomerOnboardingInput) {
       throw error;
     }
 
-    console.error("[onboarding] submitCustomerOnboarding failed", {
-      input,
-      error,
-    });
+    console.error("[onboarding] submitCustomerOnboarding failed", error);
     throw new Error("Failed to submit customer onboarding");
   }
 }

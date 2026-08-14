@@ -6,9 +6,13 @@ const smtpSecure =
   process.env.SMTP_SECURE === "true" || smtpPort === 465;
 const smtpHost = process.env.SMTP_HOST ?? "smtp.gmail.com";
 const smtpServername = process.env.SMTP_SERVERNAME ?? "smtp.gmail.com";
-const resend = process.env.RESEND_API_KEY
-  ? new Resend(process.env.RESEND_API_KEY)
+const smtpUser = process.env.SMTP_USER?.trim();
+const smtpPass = process.env.SMTP_PASS?.trim();
+const resendApiKey = process.env.RESEND_API_KEY?.trim();
+const resend = resendApiKey
+  ? new Resend(resendApiKey)
   : null;
+const smtpConfigured = Boolean(smtpUser && smtpPass);
 
 const transporter = nodemailer.createTransport({
   host: smtpHost,
@@ -21,20 +25,26 @@ const transporter = nodemailer.createTransport({
   greetingTimeout: 10_000,
   socketTimeout: 15_000,
   auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
+    user: smtpUser,
+    pass: smtpPass,
   },
 });
 
-const FROM = process.env.SMTP_FROM || process.env.SMTP_USER || "noreply@innoserve.com";
+const FROM = process.env.SMTP_FROM || smtpUser || "noreply@innoserve.in";
+
+export function isEmailConfigured() {
+  return Boolean(resend || smtpConfigured);
+}
 
 export async function sendEmail(opts: {
   to: string;
   subject: string;
   html: string;
 }) {
-  try {
-    if (resend) {
+  let resendError: unknown;
+
+  if (resend) {
+    try {
       const { error } = await resend.emails.send({
         from: FROM,
         to: opts.to,
@@ -44,18 +54,32 @@ export async function sendEmail(opts: {
 
       if (error) throw error;
       return;
+    } catch (err) {
+      resendError = err;
+      console.error("[email] Resend delivery failed", err);
     }
-
-    await transporter.sendMail({
-      from: FROM,
-      to: opts.to,
-      subject: opts.subject,
-      html: opts.html,
-    });
-  } catch (err) {
-    console.error("[email] failed to send to", opts.to, err);
-    throw new Error("Failed to send email");
   }
+
+  if (smtpConfigured) {
+    try {
+      await transporter.sendMail({
+        from: FROM,
+        to: opts.to,
+        subject: opts.subject,
+        html: opts.html,
+      });
+      return;
+    } catch (err) {
+      console.error("[email] SMTP delivery failed", err);
+      throw new Error("Failed to send email");
+    }
+  }
+
+  if (resendError) {
+    throw new Error("Resend delivery failed");
+  }
+
+  throw new Error("No email provider is configured");
 }
 
 export function engineerWelcomeEmail(
