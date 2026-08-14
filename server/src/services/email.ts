@@ -2,32 +2,24 @@ import nodemailer from "nodemailer";
 import { Resend } from "resend";
 
 const smtpPort = Number(process.env.SMTP_PORT ?? 587);
-const smtpSecure =
-  process.env.SMTP_SECURE === "true" || smtpPort === 465;
+const smtpSecure = process.env.SMTP_SECURE === "true" || smtpPort === 465;
 const smtpHost = process.env.SMTP_HOST ?? "smtp.gmail.com";
 const smtpServername = process.env.SMTP_SERVERNAME ?? "smtp.gmail.com";
 const smtpUser = process.env.SMTP_USER?.trim();
 const smtpPass = process.env.SMTP_PASS?.trim();
 const resendApiKey = process.env.RESEND_API_KEY?.trim();
-const resend = resendApiKey
-  ? new Resend(resendApiKey)
-  : null;
+const resend = resendApiKey ? new Resend(resendApiKey) : null;
 const smtpConfigured = Boolean(smtpUser && smtpPass);
 
 const transporter = nodemailer.createTransport({
   host: smtpHost,
   port: smtpPort,
   secure: smtpSecure,
-  tls: {
-    servername: smtpServername,
-  },
+  tls: { servername: smtpServername },
   connectionTimeout: 10_000,
   greetingTimeout: 10_000,
   socketTimeout: 15_000,
-  auth: {
-    user: smtpUser,
-    pass: smtpPass,
-  },
+  auth: { user: smtpUser, pass: smtpPass },
 });
 
 const FROM = process.env.SMTP_FROM || smtpUser || "noreply@innoserve.in";
@@ -75,11 +67,162 @@ export async function sendEmail(opts: {
     }
   }
 
-  if (resendError) {
-    throw new Error("Resend delivery failed");
-  }
-
+  if (resendError) throw new Error("Resend delivery failed");
   throw new Error("No email provider is configured");
+}
+
+type EmailTone = "info" | "success" | "warning" | "critical" | "security";
+
+type EmailAction = {
+  label: string;
+  url: string;
+};
+
+type EmailLayoutOptions = {
+  title: string;
+  preview: string;
+  icon: string;
+  body: string;
+  tone?: EmailTone;
+  action?: EmailAction;
+  notice?: string;
+};
+
+const toneColors: Record<EmailTone, { background: string; foreground: string }> = {
+  info: { background: "#eff6ff", foreground: "#1d4ed8" },
+  success: { background: "#ecfdf5", foreground: "#047857" },
+  warning: { background: "#fffbeb", foreground: "#b45309" },
+  critical: { background: "#fef2f2", foreground: "#b91c1c" },
+  security: { background: "#fff7ed", foreground: "#c2410c" },
+};
+
+function escapeHtml(value: unknown) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function frontendUrl(path: string) {
+  const base = (process.env.FRONTEND_URL || "https://innoserve-test.vercel.app").replace(
+    /\/$/,
+    "",
+  );
+  return `${base}${path}`;
+}
+
+function paragraph(content: string) {
+  return `<p style="margin:0 0 18px;font-size:14px;line-height:1.7;color:#4b5563;">${content}</p>`;
+}
+
+function detailsTable(rows: Array<[string, unknown]>) {
+  return `
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation"
+      style="margin:4px 0 22px;background-color:#f8fafc;border:1px solid #eef2f7;border-radius:10px;overflow:hidden;">
+      ${rows
+        .map(
+          ([label, value], index) => `
+            <tr>
+              <td style="width:38%;padding:11px 14px;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;${index ? "border-top:1px solid #eef2f7;" : ""}">
+                ${escapeHtml(label)}
+              </td>
+              <td style="padding:11px 14px;font-size:13px;font-weight:600;color:#0B182A;${index ? "border-top:1px solid #eef2f7;" : ""}">
+                ${escapeHtml(value)}
+              </td>
+            </tr>`,
+        )
+        .join("")}
+    </table>`;
+}
+
+function emailLayout(options: EmailLayoutOptions) {
+  const tone = toneColors[options.tone ?? "info"];
+  const action = options.action
+    ? `
+      <table cellpadding="0" cellspacing="0" role="presentation" style="margin:26px 0 8px;">
+        <tr>
+          <td style="border-radius:10px;background-color:#E87D1F;">
+            <a href="${escapeHtml(options.action.url)}"
+              style="display:inline-block;padding:13px 24px;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;">
+              ${escapeHtml(options.action.label)} &rarr;
+            </a>
+          </td>
+        </tr>
+      </table>`
+    : "";
+  const notice = options.notice
+    ? `<div style="margin-top:22px;padding:13px 15px;border-radius:9px;background-color:${tone.background};font-size:12px;line-height:1.65;color:${tone.foreground};">${options.notice}</div>`
+    : "";
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${escapeHtml(options.title)}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f2f0ed;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${escapeHtml(options.preview)}</div>
+  <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background-color:#f2f0ed;padding:38px 14px;">
+    <tr>
+      <td align="center">
+        <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:560px;">
+          <tr>
+            <td align="center" style="padding-bottom:22px;">
+              <table cellpadding="0" cellspacing="0" role="presentation">
+                <tr>
+                  <td style="width:38px;height:38px;border-radius:11px;background-color:#0B182A;text-align:center;vertical-align:middle;border-bottom:3px solid #E87D1F;">
+                    <span style="font-size:20px;line-height:38px;font-weight:800;color:#ffffff;">I</span>
+                  </td>
+                  <td style="padding-left:11px;vertical-align:middle;">
+                    <span style="font-size:19px;font-weight:800;color:#0B182A;letter-spacing:-.4px;">InnoServe</span>
+                    <span style="display:block;margin-top:2px;font-size:10px;font-weight:600;color:#94a3b8;letter-spacing:.8px;text-transform:uppercase;">Service Management Platform</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(11,24,42,.08);">
+              <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+                <tr><td style="height:5px;background-color:#0B182A;font-size:0;line-height:0;">&nbsp;</td></tr>
+                <tr>
+                  <td style="padding:34px 38px 32px;">
+                    <table cellpadding="0" cellspacing="0" role="presentation" style="margin-bottom:20px;">
+                      <tr>
+                        <td style="width:50px;height:50px;border-radius:50%;background-color:${tone.background};color:${tone.foreground};font-size:23px;text-align:center;vertical-align:middle;">
+                          ${options.icon}
+                        </td>
+                      </tr>
+                    </table>
+                    <h1 style="margin:0 0 10px;font-size:22px;line-height:1.3;font-weight:800;color:#0B182A;letter-spacing:-.4px;">${escapeHtml(options.title)}</h1>
+                    <div style="font-size:14px;line-height:1.7;color:#4b5563;">${options.body}</div>
+                    ${action}
+                    ${notice}
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:22px 8px 6px;text-align:center;">
+              <p style="margin:0;font-size:11px;line-height:1.6;color:#94a3b8;">This is an automated message from Innoserve Techsol.</p>
+              <p style="margin:5px 0 0;font-size:11px;color:#94a3b8;">Need help? <a href="mailto:support@innoserve.in" style="color:#E87D1F;text-decoration:none;">support@innoserve.in</a></p>
+              <p style="margin:5px 0 0;font-size:11px;color:#c0c6cf;">&copy; ${new Date().getFullYear()} Innoserve Techsol. All rights reserved.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+
+function greeting(name: string) {
+  return paragraph(`Hi <strong style="color:#0B182A;">${escapeHtml(name)}</strong>,`);
 }
 
 export function engineerWelcomeEmail(
@@ -91,34 +234,39 @@ export function engineerWelcomeEmail(
   return {
     to: email,
     subject: "Welcome to Innoserve – Your Engineer Account",
-    html: `
-      <p>Hi ${name},</p>
-      <p>Your engineer account (Ref: <strong>${referenceId}</strong>) has been approved. You can now log in.</p>
-      <p>Your login credentials:</p>
-      <ul>
-        <li><strong>Email:</strong> ${email}</li>
-        <li><strong>Password:</strong> ${password}</li>
-      </ul>
-      <p>Regards,<br/>Innoserve Team</p>
-    `,
+    html: emailLayout({
+      title: "Your engineer account is ready",
+      preview: "Your Innoserve engineer account has been approved.",
+      icon: "&#10003;",
+      tone: "success",
+      body:
+        greeting(name) +
+        paragraph("Your engineer account has been approved. You can now sign in and begin managing assigned service requests.") +
+        detailsTable([
+          ["Reference ID", referenceId],
+          ["Email", email],
+          ["Temporary password", password],
+        ]),
+      action: { label: "Sign in to Innoserve", url: frontendUrl("/auth") },
+      notice: "For your security, change this temporary password immediately after signing in.",
+    }),
   };
 }
 
-export function customerConfirmationEmail(
-  name: string,
-  email: string,
-  referenceId: string,
-) {
+export function customerConfirmationEmail(name: string, email: string, referenceId: string) {
   return {
     to: email,
     subject: "Customer Onboarding Received – Innoserve",
-    html: `
-      <p>Hi ${name},</p>
-      <p>Thank you for registering with Innoserve.</p>
-      <p>Your application reference: <strong>${referenceId}</strong></p>
-      <p>A Super Admin will review and approve your account. You will receive login credentials once approved.</p>
-      <p>Regards,<br/>Innoserve Team</p>
-    `,
+    html: emailLayout({
+      title: "Registration received",
+      preview: "We received your Innoserve customer registration.",
+      icon: "&#9993;",
+      body:
+        greeting(name) +
+        paragraph("Thank you for registering with Innoserve. Your application has been received and is awaiting review by a Super Admin.") +
+        detailsTable([["Application reference", referenceId]]),
+      notice: "We will email your login details after the account is approved.",
+    }),
   };
 }
 
@@ -131,16 +279,22 @@ export function customerWelcomeEmail(
   return {
     to: email,
     subject: "Your Innoserve Account is Approved",
-    html: `
-      <p>Hi ${name},</p>
-      <p>Your account (Ref: <strong>${referenceId}</strong>) has been approved. You can now log in.</p>
-      <p>Your login credentials:</p>
-      <ul>
-        <li><strong>Email:</strong> ${email}</li>
-        <li><strong>Password:</strong> ${password}</li>
-      </ul>
-      <p>Regards,<br/>Innoserve Team</p>
-    `,
+    html: emailLayout({
+      title: "Your account is approved",
+      preview: "Your Innoserve customer account is ready.",
+      icon: "&#10003;",
+      tone: "success",
+      body:
+        greeting(name) +
+        paragraph("Your customer account has been approved. You can now sign in to the Innoserve service management platform.") +
+        detailsTable([
+          ["Reference ID", referenceId],
+          ["Email", email],
+          ["Temporary password", password],
+        ]),
+      action: { label: "Sign in to Innoserve", url: frontendUrl("/auth") },
+      notice: "For your security, change this temporary password immediately after signing in.",
+    }),
   };
 }
 
@@ -151,16 +305,19 @@ export function superAdminCustomerNotification(
 ) {
   return {
     subject: `New Customer Onboarding – ${referenceId}`,
-    html: `
-      <p>A new customer has submitted an onboarding request:</p>
-      <ul>
-        <li><strong>Name:</strong> ${customerName}</li>
-        <li><strong>Company:</strong> ${companyName}</li>
-        <li><strong>Reference:</strong> ${referenceId}</li>
-      </ul>
-      <p>Please review and approve in the admin panel.</p>
-      <p>Regards,<br/>Innoserve System</p>
-    `,
+    html: emailLayout({
+      title: "New customer registration",
+      preview: `${companyName} submitted a customer onboarding request.`,
+      icon: "&#128188;",
+      body:
+        paragraph("A new customer onboarding request is ready for administrative review.") +
+        detailsTable([
+          ["Customer", customerName],
+          ["Company", companyName],
+          ["Reference ID", referenceId],
+        ]),
+      action: { label: "Review customer", url: frontendUrl("/admin/customers") },
+    }),
   };
 }
 
@@ -174,22 +331,24 @@ export function engineerTicketAssignedEmail(input: {
   address?: string | null;
 }) {
   const location = [input.city, input.state].filter(Boolean).join(", ");
-
   return {
     subject: `New Ticket Assigned – ${input.ticketNumber}`,
-    html: `
-      <p>Hi ${input.engineerName},</p>
-      <p>A new ticket has been assigned to you.</p>
-      <ul>
-        <li><strong>Ticket Number:</strong> ${input.ticketNumber}</li>
-        <li><strong>Title:</strong> ${input.ticketTitle}</li>
-        <li><strong>Priority:</strong> ${input.priority ?? "Not specified"}</li>
-        <li><strong>Location:</strong> ${location || "Not specified"}</li>
-        <li><strong>Address:</strong> ${input.address ?? "Not specified"}</li>
-      </ul>
-      <p>Please log in to Innoserve to review and take action.</p>
-      <p>Regards,<br/>Innoserve Team</p>
-    `,
+    html: emailLayout({
+      title: "A ticket has been assigned to you",
+      preview: `Ticket ${input.ticketNumber} requires your attention.`,
+      icon: "&#128203;",
+      body:
+        greeting(input.engineerName) +
+        paragraph("A new service ticket has been assigned to you. Please review the details and take the appropriate action.") +
+        detailsTable([
+          ["Ticket number", input.ticketNumber],
+          ["Title", input.ticketTitle],
+          ["Priority", input.priority ?? "Not specified"],
+          ["Location", location || "Not specified"],
+          ["Address", input.address ?? "Not specified"],
+        ]),
+      action: { label: "Open assigned tickets", url: frontendUrl("/engineer/tickets") },
+    }),
   };
 }
 
@@ -207,38 +366,42 @@ export function ticketFlowNotificationEmail(input: {
   remarks?: string | null;
 }) {
   const location = [input.city, input.state].filter(Boolean).join(", ");
-
   return {
     subject: `${input.subjectLine} – ${input.ticketNumber}`,
-    html: `
-      <p>Hi ${input.recipientName},</p>
-      <p>${input.heading}</p>
-      <ul>
-        <li><strong>Ticket Number:</strong> ${input.ticketNumber}</li>
-        <li><strong>Title:</strong> ${input.ticketTitle}</li>
-        <li><strong>Status:</strong> ${input.status ?? "Not specified"}</li>
-        <li><strong>Priority:</strong> ${input.priority ?? "Not specified"}</li>
-        <li><strong>Location:</strong> ${location || "Not specified"}</li>
-        <li><strong>Address:</strong> ${input.address ?? "Not specified"}</li>
-      </ul>
-      ${input.remarks ? `<p><strong>Remarks:</strong> ${input.remarks}</p>` : ""}
-      <p>Please log in to Innoserve to review the latest update.</p>
-      <p>Regards,<br/>Innoserve Team</p>
-    `,
+    html: emailLayout({
+      title: "Ticket update",
+      preview: `${input.ticketNumber}: ${input.heading}`,
+      icon: "&#8635;",
+      body:
+        greeting(input.recipientName) +
+        paragraph(escapeHtml(input.heading)) +
+        detailsTable([
+          ["Ticket number", input.ticketNumber],
+          ["Title", input.ticketTitle],
+          ["Status", input.status ?? "Not specified"],
+          ["Priority", input.priority ?? "Not specified"],
+          ["Location", location || "Not specified"],
+          ["Address", input.address ?? "Not specified"],
+          ...(input.remarks ? ([["Remarks", input.remarks]] as Array<[string, unknown]>) : []),
+        ]),
+      action: { label: "View latest update", url: frontendUrl("/auth") },
+    }),
   };
 }
 
 export function otpEmail(otp: string) {
   return {
     subject: "Your Innoserve Verification Code",
-    html: `
-      <div style="font-family:sans-serif;max-width:480px;margin:auto">
-        <h2 style="color:#0B182A">Your OTP</h2>
-        <p>Use the code below to verify your email address. It expires in <strong>5 minutes</strong>.</p>
-        <div style="font-size:36px;font-weight:bold;letter-spacing:12px;color:#E87D1F;padding:16px 0">${otp}</div>
-        <p style="color:#888;font-size:13px">If you did not request this, you can safely ignore this email.</p>
-      </div>
-    `,
+    html: emailLayout({
+      title: "Verify your email address",
+      preview: "Use your six-digit code to continue registration.",
+      icon: "&#9993;",
+      tone: "security",
+      body:
+        paragraph("Use the verification code below to continue your Innoserve registration.") +
+        `<div style="margin:6px 0 22px;padding:18px 12px;border-radius:12px;background-color:#fff7ed;border:1px solid #fed7aa;text-align:center;font-size:34px;line-height:1;font-weight:800;letter-spacing:10px;color:#E87D1F;">${escapeHtml(otp)}</div>`,
+      notice: "This code expires in 5 minutes and can only be used once. If you did not request it, you can safely ignore this email.",
+    }),
   };
 }
 
@@ -246,13 +409,18 @@ export function roleChangedEmail(name: string, email: string, newRole: string) {
   return {
     to: email,
     subject: "Your Innoserve Role Has Been Updated",
-    html: `
-      <p>Hi ${name},</p>
-      <p>A Super Admin has updated your role on Innoserve.</p>
-      <p><strong>New Role:</strong> ${newRole}</p>
-      <p>If you have any questions, please contact support.</p>
-      <p>Regards,<br/>Innoserve Team</p>
-    `,
+    html: emailLayout({
+      title: "Your access role changed",
+      preview: "Your Innoserve access permissions have been updated.",
+      icon: "&#128273;",
+      tone: "security",
+      body:
+        greeting(name) +
+        paragraph("A Super Admin has updated your role and associated access permissions.") +
+        detailsTable([["New role", newRole]]),
+      action: { label: "Open Innoserve", url: frontendUrl("/auth") },
+      notice: "If you did not expect this change, contact support immediately.",
+    }),
   };
 }
 
@@ -264,12 +432,17 @@ export function customerProfileUpdatedEmail(
   return {
     to: email,
     subject: "Your Innoserve Account Details Have Been Updated",
-    html: `
-      <p>Hi ${name},</p>
-      <p>This is to inform you that a Super Admin has updated your account details (Ref: <strong>${referenceId}</strong>).</p>
-      <p>If you did not expect this change or have any concerns, please contact support.</p>
-      <p>Regards,<br/>Innoserve Team</p>
-    `,
+    html: emailLayout({
+      title: "Account details updated",
+      preview: "Your Innoserve customer profile was updated.",
+      icon: "&#9998;",
+      body:
+        greeting(name) +
+        paragraph("A Super Admin has updated your customer account details.") +
+        detailsTable([["Reference ID", referenceId]]),
+      action: { label: "Review your profile", url: frontendUrl("/profile") },
+      notice: "If you did not expect this change or notice incorrect information, contact support.",
+    }),
   };
 }
 
@@ -281,216 +454,93 @@ export function engineerProfileUpdatedEmail(
   return {
     to: email,
     subject: "Your Innoserve Engineer Profile Has Been Updated",
-    html: `
-      <p>Hi ${name},</p>
-      <p>This is to inform you that a Super Admin has updated your engineer profile details (Ref: <strong>${referenceId}</strong>).</p>
-      <p>If you did not expect this change or have any concerns, please contact support.</p>
-      <p>Regards,<br/>Innoserve Team</p>
-    `,
+    html: emailLayout({
+      title: "Engineer profile updated",
+      preview: "Your Innoserve engineer profile was updated.",
+      icon: "&#9998;",
+      body:
+        greeting(name) +
+        paragraph("A Super Admin has updated your engineer profile details.") +
+        detailsTable([["Reference ID", referenceId]]),
+      action: { label: "Review your profile", url: frontendUrl("/profile") },
+      notice: "If you did not expect this change or notice incorrect information, contact support.",
+    }),
   };
 }
 
-export function passwordResetEmail(
-  name: string,
-  email: string,
-  resetLink: string,
-) {
+export function passwordResetEmail(name: string, email: string, resetLink: string) {
   return {
     to: email,
     subject: "Reset your Innoserve password",
-    html: `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Reset your password</title>
-</head>
-<body style="margin:0;padding:0;background-color:#f2f0ed;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f2f0ed;padding:40px 16px;">
-    <tr>
-      <td align="center">
-        <table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;">
-
-          <!-- Header -->
-          <tr>
-            <td align="center" style="padding-bottom:24px;">
-              <table cellpadding="0" cellspacing="0">
-                <tr>
-                  <td style="background-color:#E87D1F;border-radius:10px;width:36px;height:36px;text-align:center;vertical-align:middle;">
-                    <span style="font-size:18px;line-height:36px;"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 215 323" style="height: 36px; width: auto;">
-  <!-- Navy icon -->
-  <g transform="translate(0,323) scale(0.1,-0.1)" fill="#1b3e5c" stroke="none">
-    <path d="M1302 2955 c-29 -13 -330 -195 -537 -325 -33 -21 -109 -68 -170 -105
-    -60 -37 -112 -70 -115 -74 -3 -4 -18 -15 -33 -25 -67 -42 -67 -38 -67 -684 0
-    -553 1 -585 19 -620 18 -34 119 -106 321 -229 35 -21 35 -21 375 193 666 421
-    640 404 645 430 13 75 4 397 -11 405 -12 6 -22 2 -34 -11 -10 -11 -29 -20 -42
-    -20 -12 0 -33 -10 -44 -21 -25 -25 -125 -79 -145 -79 -8 0 -17 -7 -20 -15 -3
-    -8 -18 -21 -32 -28 -15 -8 -53 -28 -85 -45 -31 -18 -63 -32 -70 -32 -13 0 -67
-    -27 -124 -62 -33 -20 -33 -20 -33 235 0 247 1 255 23 287 23 34 60 56 605 354
-    138 76 252 143 252 147 0 11 -120 90 -176 116 -21 10 -43 23 -49 29 -11 12
-    -239 150 -292 178 -39 20 -116 20 -161 1z"/>
-  </g>
-  <!-- Orange icon -->
-  <g transform="translate(0,323) scale(0.1,-0.1)" fill="#e8841f" stroke="none">
-    <path d="M2100 2543 c-8 -3 -17 -9 -20 -13 -5 -6 -49 -31 -180 -103 -488 -267
-    -608 -337 -630 -367 -23 -32 -31 -360 -9 -360 5 0 7 -5 4 -10 -9 -14 131 60
-    155 82 10 10 24 18 30 18 6 0 42 18 78 41 94 57 92 55 146 80 81 37 79 43 83
-    -264 3 -305 6 -294 -104 -359 -30 -18 -70 -42 -87 -53 -120 -75 -178 -111
-    -228 -143 -32 -21 -145 -92 -253 -160 -107 -68 -198 -128 -202 -135 -7 -12
-    -8 -11 142 -110 376 -248 348 -244 590 -90 72 46 137 88 145 93 17 12 180 116
-    290 186 41 26 119 76 173 111 53 35 101 63 105 63 4 0 22 14 40 31 32 30 32
-    30 32 658 0 707 6 647 -77 703 -160 106 -182 116 -223 101z"/>
-  </g>
-</svg></span>
-                  </td>
-                  <td style="padding-left:10px;vertical-align:middle;">
-                    <span style="font-size:18px;font-weight:700;color:#0B182A;letter-spacing:-0.3px;">InnoServe</span>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-
-          <!-- Card -->
-          <tr>
-            <td style="background-color:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.07);">
-
-              <!-- Card top accent -->
-              <table width="100%" cellpadding="0" cellspacing="0">
-                <tr>
-                  <td style="height:4px;background:linear-gradient(to right,#0B182A,#021E44);font-size:0;line-height:0;">&nbsp;</td>
-                </tr>
-              </table>
-
-              <!-- Card body -->
-              <table width="100%" cellpadding="0" cellspacing="0">
-                <tr>
-                  <td style="padding:36px 40px 32px;">
-
-                    <!-- Icon -->
-                    <table cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
-                      <tr>
-                        <td style="background-color:#fff7ed;border-radius:50%;width:52px;height:52px;text-align:center;vertical-align:middle;">
-                          <span style="font-size:24px;line-height:52px;">🔒</span>
-                        </td>
-                      </tr>
-                    </table>
-
-                    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#0B182A;letter-spacing:-0.3px;">
-                      Reset your password
-                    </h1>
-                    <p style="margin:0 0 20px;font-size:13px;color:#6b7280;line-height:1.6;">
-                      Hi ${name}, we received a request to reset the password for your Innoserve account.
-                    </p>
-
-                    <!-- CTA Button -->
-                    <table cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
-                      <tr>
-                        <td style="border-radius:10px;background-color:#E87D1F;">
-                          <a href="${resetLink}"
-                             style="display:inline-block;padding:13px 28px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;letter-spacing:0.1px;">
-                            Set New Password →
-                          </a>
-                        </td>
-                      </tr>
-                    </table>
-
-                    <!-- Fallback link -->
-                    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
-                      <tr>
-                        <td style="background-color:#f9fafb;border-radius:8px;padding:14px 16px;">
-                          <p style="margin:0 0 6px;font-size:11px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:0.6px;">
-                            Or copy this link into your browser
-                          </p>
-                          <p style="margin:0;font-size:12px;color:#0B182A;word-break:break-all;font-family:monospace;">
-                            ${resetLink}
-                          </p>
-                        </td>
-                      </tr>
-                    </table>
-
-                    <!-- Divider -->
-                    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
-                      <tr>
-                        <td style="border-top:1px solid #f3f4f6;font-size:0;line-height:0;">&nbsp;</td>
-                      </tr>
-                    </table>
-
-                    <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.7;">
-                      This link will expire in <strong style="color:#6b7280;">24 hours</strong>.
-                      If you did not request a password reset, you can safely ignore this email —
-                      your password will not change.
-                    </p>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-
-          <!-- Footer -->
-          <tr>
-            <td style="padding:24px 0 8px;text-align:center;">
-              <p style="margin:0;font-size:12px;color:#9ca3af;">
-                © ${new Date().getFullYear()} Innoserve Techsol. All rights reserved.
-              </p>
-              <p style="margin:6px 0 0;font-size:12px;color:#9ca3af;">
-                Need help? <a href="mailto:support@innoserve.in" style="color:#E87D1F;text-decoration:none;">support@innoserve.in</a>
-              </p>
-            </td>
-          </tr>
-
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`,
+    html: emailLayout({
+      title: "Reset your password",
+      preview: "A password reset was requested for your Innoserve account.",
+      icon: "&#128274;",
+      tone: "security",
+      body:
+        greeting(name) +
+        paragraph("We received a request to reset the password for your Innoserve account. Use the secure button below to choose a new password."),
+      action: { label: "Set a new password", url: resetLink },
+      notice: `This link expires in 24 hours. If the button does not work, copy this URL into your browser:<br/><span style="word-break:break-all;">${escapeHtml(resetLink)}</span><br/><br/>If you did not request a reset, you can safely ignore this email.`,
+    }),
   };
 }
 
 export function emailQuota80Alert(customerName: string, used: number, cap: number) {
   return {
     subject: "Email-to-Ticket Quota Warning – 80% Reached",
-    html: `
-      <p>This is an automated alert from Innoserve.</p>
-      <p>The email-to-ticket processing quota for customer <strong>${customerName}</strong> has reached <strong>80%</strong> of the monthly limit.</p>
-      <ul>
-        <li><strong>Emails processed this month:</strong> ${used}</li>
-        <li><strong>Monthly cap:</strong> ${cap}</li>
-      </ul>
-      <p>If you expect a higher volume, please contact platform support to extend the cap before processing is automatically paused.</p>
-      <p>Regards,<br/>Innoserve Platform</p>
-    `,
+    html: emailLayout({
+      title: "Email processing quota warning",
+      preview: `${customerName} has reached 80% of its monthly email-to-ticket quota.`,
+      icon: "&#9888;",
+      tone: "warning",
+      body:
+        paragraph("The monthly email-to-ticket processing quota is approaching its configured limit.") +
+        detailsTable([
+          ["Customer", customerName],
+          ["Emails processed", used],
+          ["Monthly cap", cap],
+        ]),
+      notice: "Contact platform support to extend the cap before processing is automatically paused.",
+    }),
   };
 }
 
 export function emailQuota100Alert(customerName: string, used: number, cap: number) {
   return {
     subject: "Email-to-Ticket Processing SUSPENDED – Monthly Cap Reached",
-    html: `
-      <p>This is an automated alert from Innoserve.</p>
-      <p>The email-to-ticket processing for customer <strong>${customerName}</strong> has been <strong>automatically suspended</strong> because the monthly cap has been reached.</p>
-      <ul>
-        <li><strong>Emails processed:</strong> ${used}</li>
-        <li><strong>Monthly cap:</strong> ${cap}</li>
-      </ul>
-      <p>No further emails will be processed until a platform support staff member resumes processing or the cap is extended.</p>
-      <p>Regards,<br/>Innoserve Platform</p>
-    `,
+    html: emailLayout({
+      title: "Email processing suspended",
+      preview: `${customerName} reached its monthly email-to-ticket limit.`,
+      icon: "!",
+      tone: "critical",
+      body:
+        paragraph("Email-to-ticket processing has been automatically suspended because the monthly limit was reached.") +
+        detailsTable([
+          ["Customer", customerName],
+          ["Emails processed", used],
+          ["Monthly cap", cap],
+        ]),
+      notice: "No further emails will be processed until platform support resumes processing or extends the cap.",
+    }),
   };
 }
 
 export function emailAnomalySuspendAlert(customerName: string, recentCount: number) {
   return {
     subject: "Email-to-Ticket Processing SUSPENDED – Anomaly Detected",
-    html: `
-      <p>This is an automated alert from Innoserve.</p>
-      <p>An unusual volume spike was detected for customer <strong>${customerName}</strong>. Email-to-ticket processing has been <strong>automatically suspended</strong> as a precaution.</p>
-      <ul>
-        <li><strong>Emails received in last 15 minutes:</strong> ${recentCount}</li>
-      </ul>
-      <p>Please review your email activity and contact platform support to resume processing.</p>
-      <p>Regards,<br/>Innoserve Platform</p>
-    `,
+    html: emailLayout({
+      title: "Unusual email activity detected",
+      preview: `Email-to-ticket processing for ${customerName} was suspended as a precaution.`,
+      icon: "!",
+      tone: "critical",
+      body:
+        paragraph("An unusual volume spike was detected. Email-to-ticket processing has been automatically suspended as a precaution.") +
+        detailsTable([
+          ["Customer", customerName],
+          ["Emails in the last 15 minutes", recentCount],
+        ]),
+      notice: "Review the recent email activity and contact platform support before resuming processing.",
+    }),
   };
 }
