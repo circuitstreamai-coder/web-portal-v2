@@ -66,6 +66,22 @@ export async function updateCustomerStatus(input: UpdateCustomerStatusInput): Pr
   return result;
 }
 
+export async function approveCustomer(id: string): Promise<Customer> {
+  const result = await restRequest<Customer>(`/api/customers/${id}/approve`, {
+    method: 'PATCH',
+  });
+  invalidate('customers');
+  return result;
+}
+
+export async function rejectCustomer(id: string): Promise<Customer> {
+  const result = await restRequest<Customer>(`/api/customers/${id}/reject`, {
+    method: 'PATCH',
+  });
+  invalidate('customers');
+  return result;
+}
+
 export async function deleteCustomer(id: string): Promise<void> {
   await restRequest<void>(`/api/customers/${id}`, { method: 'DELETE' });
   invalidate('customers');

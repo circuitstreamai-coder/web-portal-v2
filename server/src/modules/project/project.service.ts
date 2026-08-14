@@ -1,6 +1,6 @@
 import { eq, and } from "drizzle-orm";
 import { db } from "../../db/db.js";
-import { projects, customers } from "../../db/schema/index.js";
+import { projects, customers, tickets } from "../../db/schema/index.js";
 import type { CreateProjectBody, UpdateProjectBody } from "./project.schema.js";
 
 export async function createProject(data: CreateProjectBody) {
@@ -97,6 +97,25 @@ export async function assignProjectHead(
   if (!project) {
     throw { statusCode: 404, message: "Project not found" };
   }
+
+  return project;
+}
+
+export async function deleteProject(id: string) {
+  const [project] = await db
+    .update(projects)
+    .set({ deleted: true })
+    .where(and(eq(projects.id, id), eq(projects.deleted, false)))
+    .returning();
+
+  if (!project) {
+    throw { statusCode: 404, message: "Project not found" };
+  }
+
+  await db
+    .update(tickets)
+    .set({ deleted: true })
+    .where(and(eq(tickets.projectId, id), eq(tickets.deleted, false)));
 
   return project;
 }

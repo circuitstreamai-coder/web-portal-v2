@@ -20,10 +20,18 @@ import {
   createRca,
   updateRca,
   createTicketFromEmail,
+  deleteTicket,
+  getTicketReplacement,
 } from "./ticket.service.js";
 import { createAttachment } from "./attachment.service.js";
 import { createTicketHistoryEntry, listTicketHistoryByTicket } from "./ticket-history.service.js";
-import { createTicketCategory, updatePayoutRate } from "./ticket-category.service.js";
+import {
+  createTicketCategory,
+  deleteTicketCategory,
+  listPayoutRates,
+  updatePayoutRate,
+  updateTicketCategory,
+} from "./ticket-category.service.js";
 import type {
   CreateTicketBody,
   AssignTicketBody,
@@ -52,6 +60,19 @@ export async function createTicketHandler(
     return reply
       .code(err.statusCode ?? 500)
       .send({ error: err.message ?? "Internal server error" });
+  }
+}
+
+export async function deleteTicketHandler(
+  req: FastifyRequest,
+  reply: FastifyReply,
+) {
+  try {
+    const { id } = req.params as { id: string };
+    await deleteTicket(id);
+    return reply.code(204).send();
+  } catch (err: any) {
+    return reply.code(err.statusCode ?? 500).send({ error: err.message ?? "Internal server error" });
   }
 }
 
@@ -269,12 +290,26 @@ export async function listReplacementsHandler(
   reply: FastifyReply,
 ) {
   try {
-    const result = await listReplacements(req.user.role, req.user.id);
+    let result = await listReplacements(req.user.role, req.user.id);
+    const { status } = req.query as { status?: string };
+    if (status) result = result.filter((item) => item.status === status);
     return reply.send(result);
   } catch (err: any) {
     return reply
       .code(err.statusCode ?? 500)
       .send({ error: err.message ?? "Internal server error" });
+  }
+}
+
+export async function getTicketReplacementHandler(
+  req: FastifyRequest,
+  reply: FastifyReply,
+) {
+  try {
+    const { id } = req.params as { id: string };
+    return reply.send(await getTicketReplacement(id, req.user.role, req.user.id));
+  } catch (err: any) {
+    return reply.code(err.statusCode ?? 500).send({ error: err.message ?? "Internal server error" });
   }
 }
 
@@ -400,6 +435,35 @@ export async function createTicketCategoryHandler(
   }
 }
 
+export async function updateTicketCategoryHandler(
+  req: FastifyRequest,
+  reply: FastifyReply,
+) {
+  try {
+    const { id } = req.params as { id: string };
+    const category = await updateTicketCategory(
+      id,
+      req.body as { name?: string; defaultPayout?: number },
+    );
+    return reply.send(category);
+  } catch (err: any) {
+    return reply.code(err.statusCode ?? 500).send({ error: err.message ?? "Internal server error" });
+  }
+}
+
+export async function deleteTicketCategoryHandler(
+  req: FastifyRequest,
+  reply: FastifyReply,
+) {
+  try {
+    const { id } = req.params as { id: string };
+    await deleteTicketCategory(id);
+    return reply.code(204).send();
+  } catch (err: any) {
+    return reply.code(err.statusCode ?? 500).send({ error: err.message ?? "Internal server error" });
+  }
+}
+
 export async function updatePayoutRateHandler(
   req: FastifyRequest,
   reply: FastifyReply,
@@ -413,6 +477,17 @@ export async function updatePayoutRateHandler(
     return reply
       .code(err.statusCode ?? 500)
       .send({ error: err.message ?? "Internal server error" });
+  }
+}
+
+export async function listPayoutRatesHandler(
+  _req: FastifyRequest,
+  reply: FastifyReply,
+) {
+  try {
+    return reply.send(await listPayoutRates());
+  } catch (err: any) {
+    return reply.code(err.statusCode ?? 500).send({ error: err.message ?? "Internal server error" });
   }
 }
 

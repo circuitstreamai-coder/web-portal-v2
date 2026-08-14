@@ -76,13 +76,13 @@
     reviewEng = null;
     confirmModal = {
       title: "Approve Engineer",
-      message: `Approve ${eng.userName ?? eng.referenceId ?? "this engineer"}? Login credentials will be sent to their email.`,
+      message: `Approve ${eng.userName ?? eng.referenceId ?? "this engineer"}? Their portal access will be activated and initial credentials will be sent if this is their first approval.`,
       confirmLabel: "Approve",
       confirmClass: "bg-green-600 text-white hover:bg-green-700",
       action: async () => {
         await updateEngineerDocumentsStatus({ id: eng.id, documentsStatus: "approved" });
         engineers = engineers.map(e => e.id === eng.id ? { ...e, documentsStatus: "approved" } : e);
-        toast.success(`${eng.userName ?? eng.referenceId} approved — credentials sent`);
+        toast.success(`${eng.userName ?? eng.referenceId} approved`);
       },
     };
   }
@@ -463,7 +463,7 @@
                 onclick={() => (reviewEng = eng)}
                 class="w-full py-2 text-[12px] font-semibold rounded-lg bg-[#0B182A] text-white hover:opacity-90 transition-opacity cursor-pointer"
               >
-                Review Documents
+                Review &amp; Approve
               </button>
             {:else if eng.documentsStatus === "pending" && !hasDocuments(eng)}
               <button
@@ -574,6 +574,7 @@
     engineerId={eng.id}
     engineerName={eng.userName ?? eng.referenceId ?? eng.id}
     referenceId={eng.referenceId ?? eng.id}
+    onDone={loadEngineers}
     onClose={() => (uploadDocsEngineer = null)}
   />
 {/if}

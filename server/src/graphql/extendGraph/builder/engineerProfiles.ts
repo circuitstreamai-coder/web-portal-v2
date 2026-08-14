@@ -90,21 +90,29 @@ export const resolvers = {
   Query: {
     engineerProfiles: async (_: unknown, __: unknown, ctx: Context) => {
       if (!ctx.user) throw { statusCode: 401, message: "Unauthorized" };
-      return listEngineerProfilesWithUsers();
+      return listEngineerProfilesWithUsers(ctx.user.role, ctx.user.id);
     },
     engineerProfile: async (_: unknown, { userId }: { userId: string }, ctx: Context) => {
       if (!ctx.user) throw { statusCode: 401, message: "Unauthorized" };
+      const isEngineer = ["engineer", "l2_engineer", "l3_engineer"].includes(ctx.user.role);
+      const isStaff = ["super_admin", "noc", "state_planner", "project_head", "national_head"].includes(ctx.user.role);
+      if ((!isStaff && !isEngineer) || (isEngineer && userId !== ctx.user.id)) {
+        throw { statusCode: 403, message: "Forbidden" };
+      }
       return getEngineerProfileByUserId(userId);
     },
   },
   Mutation: {
     createEngineerProfile: async (_: unknown, { input }: { input: any }, ctx: Context) => {
       if (!ctx.user) throw { statusCode: 401, message: "Unauthorized" };
+      if (!["super_admin", "national_head"].includes(ctx.user.role)) {
+        throw { statusCode: 403, message: "Forbidden" };
+      }
       return createEngineerProfile(input);
     },
     updateEngineerDocuments: async (_: unknown, { input }: { input: any }, ctx: Context) => {
       if (!ctx.user) throw { statusCode: 401, message: "Unauthorized" };
-      if (!["super_admin", "noc"].includes(ctx.user.role)) {
+      if (!["super_admin", "national_head"].includes(ctx.user.role)) {
         throw { statusCode: 403, message: "Forbidden" };
       }
       const { id, ...fields } = input;
@@ -116,7 +124,7 @@ export const resolvers = {
       ctx: Context,
     ) => {
       if (!ctx.user) throw { statusCode: 401, message: "Unauthorized" };
-      if (!["super_admin", "noc"].includes(ctx.user.role)) {
+      if (!["super_admin", "national_head"].includes(ctx.user.role)) {
         throw { statusCode: 403, message: "Forbidden" };
       }
       return updateDocumentsStatus(input.id, input.documentsStatus);

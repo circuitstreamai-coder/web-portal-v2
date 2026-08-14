@@ -21,7 +21,6 @@
   import ClosureChecklist from '$lib/modules/data/tickets/ClosureChecklist.svelte';
   import { queryVersion, invalidate } from '$lib/stores/query';
   import Pagination from '$lib/components/Pagination.svelte';
-  import { createPayout } from '$lib/api/payouts';
 
   const user = $derived($authStore.user);
 
@@ -347,12 +346,6 @@
       allTickets = allTickets.map((t) => (t.id === updated.id ? { ...t, ...updated } : t));
       toast.success('Ticket marked as resolved');
       invalidate('tickets');
-      // Auto-trigger payout record creation on ticket resolution
-      if (user?.id) {
-        createPayout({ ticketId: ticket.id, engineerId: user.id }).catch(() => {
-          // silent — payout creation failure should not block the resolve flow
-        });
-      }
     } catch (err) {
       toast.error(`Failed: ${(err as Error).message}`);
     } finally {

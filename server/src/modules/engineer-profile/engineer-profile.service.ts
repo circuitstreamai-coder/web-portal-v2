@@ -48,6 +48,10 @@ export async function listEngineerProfiles(role: string, userId: string) {
       );
   }
 
+  if (!["super_admin", "noc", "state_planner", "project_head", "national_head"].includes(role)) {
+    throw { statusCode: 403, message: "Forbidden" };
+  }
+
   return db
     .select()
     .from(engineerProfiles)
@@ -55,8 +59,8 @@ export async function listEngineerProfiles(role: string, userId: string) {
 }
 
 /** Returns profiles joined with basic user info — used by the GraphQL resolver. */
-export async function listEngineerProfilesWithUsers() {
-  return db
+export async function listEngineerProfilesWithUsers(role: string, userId: string) {
+  const query = db
     .select({
       id: engineerProfiles.id,
       userId: engineerProfiles.userId,
@@ -84,8 +88,19 @@ export async function listEngineerProfilesWithUsers() {
       userStatus: users.status,
     })
     .from(engineerProfiles)
-    .leftJoin(users, eq(users.id, engineerProfiles.userId))
-    .where(eq(engineerProfiles.deleted, false));
+    .leftJoin(users, eq(users.id, engineerProfiles.userId));
+
+  if (["engineer", "l2_engineer", "l3_engineer"].includes(role)) {
+    return query.where(
+      and(eq(engineerProfiles.userId, userId), eq(engineerProfiles.deleted, false)),
+    );
+  }
+
+  if (!["super_admin", "noc", "state_planner", "project_head", "national_head"].includes(role)) {
+    throw { statusCode: 403, message: "Forbidden" };
+  }
+
+  return query.where(eq(engineerProfiles.deleted, false));
 }
 
 // ── Mutations ─────────────────────────────────────────────────────────────────
@@ -104,9 +119,12 @@ export async function updateEngineerDocumentUrls(
 ) {
   const [profile] = await db
     .update(engineerProfiles)
-    .set(fields as any)
-    .where(eq(engineerProfiles.id, id))
+    .set({ ...fields, documentsStatus: "pending" } as any)
+    .where(and(eq(engineerProfiles.id, id), eq(engineerProfiles.deleted, false)))
     .returning();
+  if (!profile) {
+    throw { statusCode: 404, message: "Engineer profile not found" };
+  }
   return profile;
 }
 
@@ -198,10 +216,75 @@ export async function deleteEngineerProfile(id: string) {
     throw { statusCode: 404, message: "Engineer profile not found" };
   }
 
+  await db
+    .update(users)
+    .set({ deleted: true, status: "inactive" })
+    .where(eq(users.id, profile.userId));
+
   return profile;
 }
 
 export async function updateDocumentsStatus(id: string, status: string) {
+  const [existing] = await db
+    .select()
+    .from(engineerProfiles)
+    .where(and(eq(engineerProfiles.id, id), eq(engineerProfiles.deleted, false)));
+
+  if (!existing) {
+    throw { statusCode: 404, message: "Engineer profile not found" };
+  }
+
+  if (
+    status === "approved" &&
+    ![
+      existing.aadhaarFrontUrl,
+      existing.aadhaarBackUrl,
+      existing.panCardUrl,
+      existing.dlFrontUrl,
+      existing.dlBackUrl,
+      existing.cancelChequeUrl,
+    ].every(Boolean)
+  ) {
+    throw { statusCode: 400, message: "All required documents must be uploaded before approval" };
+  }
+
+  if (status === "approved") {
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(and(eq(users.id, existing.userId), eq(users.deleted, false)));
+
+    if (user && !user.password) {
+      if (!user.email) {
+        throw { statusCode: 400, message: "Engineer login email is required before approval" };
+      }
+      const plainPassword = generatePassword();
+      const hashedPassword = await bcrypt.hash(plainPassword, 10);
+      await sendEmail(
+        engineerWelcomeEmail(
+          user.name ?? user.email,
+          user.email,
+          plainPassword,
+          existing.referenceId!,
+        ),
+      );
+      await db
+        .update(users)
+        .set({ password: hashedPassword, status: "active" })
+        .where(eq(users.id, user.id));
+    } else if (user) {
+      await db
+        .update(users)
+        .set({ status: "active" })
+        .where(eq(users.id, user.id));
+    }
+  } else {
+    await db
+      .update(users)
+      .set({ status: status === "rejected" ? "rejected" : "pending" })
+      .where(eq(users.id, existing.userId));
+  }
+
   const [profile] = await db
     .update(engineerProfiles)
     .set({ documentsStatus: status })
@@ -212,30 +295,6 @@ export async function updateDocumentsStatus(id: string, status: string) {
 
   if (!profile) {
     throw { statusCode: 404, message: "Engineer profile not found" };
-  }
-
-  if (status === "approved") {
-    const [user] = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, profile.userId));
-
-    if (user && user.email) {
-      const plainPassword = generatePassword();
-      const hashedPassword = await bcrypt.hash(plainPassword, 10);
-      await db
-        .update(users)
-        .set({ password: hashedPassword, status: "active" })
-        .where(eq(users.id, user.id));
-      await sendEmail(
-        engineerWelcomeEmail(
-          user.name ?? user.email,
-          user.email,
-          plainPassword,
-          profile.referenceId!,
-        ),
-      );
-    }
   }
 
   return profile;

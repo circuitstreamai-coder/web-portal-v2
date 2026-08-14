@@ -4,6 +4,7 @@ import {
   listProjects,
   assignProjectHead,
   updateProject,
+  deleteProject,
 } from "./project.service.js";
 import type { CreateProjectBody, AssignHeadBody, UpdateProjectBody } from "./project.schema.js";
 
@@ -14,6 +15,21 @@ export async function createProjectHandler(
   try {
     const project = await createProject(req.body as CreateProjectBody);
     return reply.code(201).send(project);
+  } catch (err: any) {
+    return reply
+      .code(err.statusCode ?? 500)
+      .send({ error: err.message ?? "Internal server error" });
+  }
+}
+
+export async function deleteProjectHandler(
+  req: FastifyRequest,
+  reply: FastifyReply,
+) {
+  try {
+    const { id } = req.params as { id: string };
+    await deleteProject(id);
+    return reply.code(204).send();
   } catch (err: any) {
     return reply
       .code(err.statusCode ?? 500)

@@ -7,6 +7,8 @@ import {
 import {
   createCustomerHandler,
   approveCustomerHandler,
+  rejectCustomerHandler,
+  deleteCustomerHandler,
   listCustomersHandler,
   updateCustomerHandler,
   updateCustomerStatusHandler,
@@ -24,9 +26,21 @@ export async function customerRoutes(app: FastifyInstance) {
   );
 
   app.patch(
+    "/api/customers/:id/reject",
+    { preHandler: [authenticate, authorize(["super_admin", "national_head"])] },
+    rejectCustomerHandler,
+  );
+
+  app.patch(
     "/api/customers/:id",
     { preHandler: [authenticate, onlySuperAdmin] },
     updateCustomerHandler,
+  );
+
+  app.delete(
+    "/api/customers/:id",
+    { preHandler: [authenticate, onlySuperAdmin] },
+    deleteCustomerHandler,
   );
 
   app.patch(

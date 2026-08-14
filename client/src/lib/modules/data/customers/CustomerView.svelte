@@ -9,18 +9,18 @@
   }: {
     customer: Customer;
     onClose: () => void;
-    onEdit: () => void;
+    onEdit?: () => void;
   } = $props();
 
   function statusStyle(status: string) {
     if (status === "active") return "bg-green-50 text-green-600";
-    if (status === "pending") return "bg-amber-50 text-amber-600";
+    if (status === "pending" || status === "pending_approval") return "bg-amber-50 text-amber-600";
     if (status === "rejected") return "bg-red-50 text-red-500";
     return "bg-gray-100 text-gray-500";
   }
 
   function statusLabel(status: string) {
-    if (status === "pending") return "Pending Approval";
+    if (status === "pending" || status === "pending_approval") return "Pending Approval";
     return status.charAt(0).toUpperCase() + status.slice(1);
   }
 
@@ -219,10 +219,11 @@
       >
         Close
       </button>
-      <button
-        onclick={onEdit}
-        class="flex items-center gap-2 px-5 py-2.5 text-[13px] text-white font-semibold bg-[linear-gradient(to_bottom,#0B182A,#021E44)] rounded-lg hover:opacity-90 active:scale-[0.98] transition-all cursor-pointer"
-      >
+      {#if onEdit}
+        <button
+          onclick={onEdit}
+          class="flex items-center gap-2 px-5 py-2.5 text-[13px] text-white font-semibold bg-[linear-gradient(to_bottom,#0B182A,#021E44)] rounded-lg hover:opacity-90 active:scale-[0.98] transition-all cursor-pointer"
+        >
         <svg
           width="14"
           height="14"
@@ -238,8 +239,9 @@
           />
           <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
         </svg>
-        Edit
-      </button>
+          Edit
+        </button>
+      {/if}
     </div>
   </div>
 </div>

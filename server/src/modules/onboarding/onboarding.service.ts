@@ -400,7 +400,7 @@ export async function submitCustomerOnboarding(input: CustomerOnboardingInput) {
           secondaryContactPhone: secondaryPhone ?? null,
           userId: user.id,
           referenceId,
-          status: "pending_approval",
+          status: "pending",
           author: "system",
         })
         .returning();

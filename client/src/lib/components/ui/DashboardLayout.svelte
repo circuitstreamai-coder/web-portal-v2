@@ -40,6 +40,7 @@
     state_planner:"/planner/tickets",
     project_head: "/project-head/tickets",
     vendor:       "/vendor/tickets",
+    asset_manager:"/inventory",
   };
 
   function resolveNotificationHref(href: string): string {
@@ -57,8 +58,6 @@
       { label: "Projects",    href: "/admin/projects",           icon: "folder"  },
       { label: "Tickets",     href: "/admin/tickets",            icon: "ticket"  },
       { label: "Inventory",   href: "/admin/inventory",          icon: "cube"    },
-      { label: "PO Tracking", href: "/admin/inventory/po",       icon: "package" },
-      { label: "Config",      href: "/admin/inventory/config",   icon: "settings"},
       { label: "SLA",         href: "/admin/sla",                icon: "shield"  },
       { label: "Call Types",  href: "/admin/categories",         icon: "tag"     },
       { label: "Roles",       href: "/admin/roles",              icon: "key"     },
@@ -120,6 +119,9 @@
     vendor: [
       { label: "Dashboard", href: "/vendor",         icon: "home"   },
       { label: "Tickets",   href: "/vendor/tickets", icon: "ticket" },
+    ],
+    asset_manager: [
+      { label: "Inventory", href: "/inventory", icon: "cube" },
     ],
   };
 

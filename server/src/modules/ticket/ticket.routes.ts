@@ -31,6 +31,11 @@ import {
   updatePayoutRateHandler,
   exportPayoutsHandler,
   emailInboundHandler,
+  deleteTicketHandler,
+  updateTicketCategoryHandler,
+  deleteTicketCategoryHandler,
+  getTicketReplacementHandler,
+  listPayoutRatesHandler,
 } from "./ticket.controller.js";
 
 export async function ticketRoutes(app: FastifyInstance) {
@@ -43,10 +48,28 @@ export async function ticketRoutes(app: FastifyInstance) {
     createTicketCategoryHandler,
   );
 
+  app.patch(
+    "/api/ticket-categories/:id",
+    { preHandler: [authenticate, onlySuperAdmin] },
+    updateTicketCategoryHandler,
+  );
+
+  app.delete(
+    "/api/ticket-categories/:id",
+    { preHandler: [authenticate, onlySuperAdmin] },
+    deleteTicketCategoryHandler,
+  );
+
   app.put(
     "/api/payout-rates/:categoryId",
     { preHandler: [authenticate, onlySuperAdmin] },
     updatePayoutRateHandler,
+  );
+
+  app.get(
+    "/api/payout-rates",
+    { preHandler: [authenticate] },
+    listPayoutRatesHandler,
   );
 
   // Any authenticated user can create a ticket
@@ -55,11 +78,25 @@ export async function ticketRoutes(app: FastifyInstance) {
   // Authenticated, results filtered by role
   app.get("/api/tickets", { preHandler: [authenticate] }, listTicketsHandler);
 
+  app.delete(
+    "/api/tickets/:id",
+    { preHandler: [authenticate, onlySuperAdmin] },
+    deleteTicketHandler,
+  );
+
   app.get("/api/payouts", { preHandler: [authenticate] }, listPayoutsHandler);
 
   app.get("/api/payouts/export", { preHandler: [authenticate] }, exportPayoutsHandler);
 
   app.get("/api/replacements", { preHandler: [authenticate] }, listReplacementsHandler);
+
+  app.get("/api/replacements/my", { preHandler: [authenticate] }, listReplacementsHandler);
+
+  app.get(
+    "/api/tickets/:id/replacement",
+    { preHandler: [authenticate] },
+    getTicketReplacementHandler,
+  );
 
   // Assign: super_admin, noc, state_planner only
   app.patch(

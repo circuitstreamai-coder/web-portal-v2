@@ -1,5 +1,5 @@
 //src/modules/ticket/ticket.service.ts
-import { eq, and, inArray, ilike, gte, count } from "drizzle-orm";
+import { eq, and, inArray, ilike, gte, count, isNotNull } from "drizzle-orm";
 import { db } from "../../db/db.js";
 import {
   tickets,
@@ -356,14 +356,47 @@ export async function listTickets(role: string, userId: string) {
   throw { statusCode: 403, message: "Forbidden" };
 }
 
+export async function deleteTicket(id: string) {
+  const [ticket] = await db
+    .update(tickets)
+    .set({ deleted: true })
+    .where(and(eq(tickets.id, id), eq(tickets.deleted, false)))
+    .returning();
+
+  if (!ticket) {
+    throw { statusCode: 404, message: "Ticket not found" };
+  }
+
+  return ticket;
+}
+
 export async function listPayouts(role: string, userId: string) {
   const payoutQuery = db
     .select({
+      id: tickets.id,
       ticketId: tickets.id,
+      ticketNumber: tickets.ticketNumber,
+      engineerId: tickets.assignedEngineerId,
+      engineerName: users.name,
+      callType: ticketCategories.name,
       payoutAmount: tickets.payoutAmount,
-      status: tickets.status,
+      createdAt: tickets.closedAt,
     })
-    .from(tickets);
+    .from(tickets)
+    .leftJoin(users, eq(tickets.assignedEngineerId, users.id))
+    .leftJoin(ticketCategories, eq(tickets.categoryId, ticketCategories.id));
+
+  const formatRows = (rows: Awaited<ReturnType<typeof payoutQuery.where>>) =>
+    rows.map((row) => ({
+      ...row,
+      engineerId: row.engineerId ?? "",
+      callType: row.callType ?? "Uncategorised",
+      payoutAmount: row.payoutAmount ?? 0,
+      amount: row.payoutAmount ?? 0,
+      currency: "INR",
+      status: "credited" as const,
+      creditedAt: row.createdAt,
+    }));
 
   if (["engineer", "l2_engineer", "l3_engineer"].includes(role)) {
     return payoutQuery.where(
@@ -372,13 +405,13 @@ export async function listPayouts(role: string, userId: string) {
         eq(tickets.status, "closed"),
         eq(tickets.deleted, false),
       ),
-    );
+    ).then(formatRows);
   }
 
   if (["super_admin", "noc", "project_head", "state_planner", "national_head"].includes(role)) {
     return payoutQuery.where(
       and(eq(tickets.status, "closed"), eq(tickets.deleted, false)),
-    );
+    ).then(formatRows);
   }
 
   throw { statusCode: 403, message: "Forbidden" };
@@ -699,30 +732,66 @@ export async function getTicketClosureEligibility(id: string) {
   };
 }
 
+function toReplacementRecord(ticket: typeof tickets.$inferSelect) {
+  return {
+    id: ticket.id,
+    ticketId: ticket.id,
+    ticketNumber: ticket.ticketNumber,
+    engineerId: ticket.assignedEngineerId ?? "",
+    deviceType: ticket.title ?? "Replacement item",
+    reason: ticket.description ?? "Replacement requested",
+    status: ticket.replacementStatus ?? "pending",
+    requestedAt: (ticket.updatedAt ?? ticket.createdAt).toISOString(),
+    updatedAt: ticket.updatedAt?.toISOString() ?? null,
+  };
+}
+
 export async function listReplacements(role: string, userId: string) {
+  let rows: (typeof tickets.$inferSelect)[];
   if (["engineer", "l2_engineer", "l3_engineer"].includes(role)) {
-    return db
+    rows = await db
       .select()
       .from(tickets)
       .where(
         and(
           eq(tickets.assignedEngineerId, userId),
-          eq(tickets.replacementRequested, true),
+          isNotNull(tickets.replacementStatus),
           eq(tickets.deleted, false),
         ),
       );
-  }
-
-  if (["super_admin", "noc", "state_planner", "project_head", "national_head"].includes(role)) {
-    return db
+  } else if (role === "customer") {
+    rows = await db
       .select()
       .from(tickets)
+      .innerJoin(projects, eq(tickets.projectId, projects.id))
+      .innerJoin(customers, eq(projects.customerId, customers.id))
       .where(
-        and(eq(tickets.replacementRequested, true), eq(tickets.deleted, false)),
-      );
+        and(
+          eq(customers.userId, userId),
+          isNotNull(tickets.replacementStatus),
+          eq(tickets.deleted, false),
+          eq(projects.deleted, false),
+          eq(customers.deleted, false),
+        ),
+      )
+      .then((joined) => joined.map((row) => row.tickets));
+  } else if (["super_admin", "noc", "state_planner", "project_head", "national_head"].includes(role)) {
+    rows = await db
+      .select()
+      .from(tickets)
+      .where(and(isNotNull(tickets.replacementStatus), eq(tickets.deleted, false)));
+  } else {
+    throw { statusCode: 403, message: "Forbidden" };
   }
 
-  throw { statusCode: 403, message: "Forbidden" };
+  return rows.map(toReplacementRecord);
+}
+
+export async function getTicketReplacement(id: string, role: string, userId: string) {
+  const replacements = await listReplacements(role, userId);
+  const replacement = replacements.find((item) => item.ticketId === id);
+  if (!replacement) throw { statusCode: 404, message: "Replacement request not found" };
+  return replacement;
 }
 
 export async function requestTicketReplacement(id: string, authorId: string) {
@@ -756,7 +825,7 @@ export async function requestTicketReplacement(id: string, authorId: string) {
     heading: "A replacement has been requested for this ticket.",
   });
 
-  return { success: true };
+  return toReplacementRecord(updatedTicket);
 }
 
 export async function approveTicketReplacement(id: string, authorId: string) {
@@ -800,7 +869,7 @@ export async function approveTicketReplacement(id: string, authorId: string) {
     heading: "The replacement request has been approved.",
   });
 
-  return { success: true };
+  return toReplacementRecord(updatedTicket);
 }
 
 export async function rejectTicketReplacement(id: string, authorId: string) {
@@ -842,7 +911,7 @@ export async function rejectTicketReplacement(id: string, authorId: string) {
     heading: "The replacement request has been rejected.",
   });
 
-  return { success: true };
+  return toReplacementRecord(updatedTicket);
 }
 
 export async function dispatchTicketReplacement(id: string, authorId: string) {
@@ -876,7 +945,7 @@ export async function dispatchTicketReplacement(id: string, authorId: string) {
     heading: "The replacement part has been dispatched.",
   });
 
-  return { success: true };
+  return toReplacementRecord(updatedTicket);
 }
 
 // ── RCA ───────────────────────────────────────────────────────────────────────

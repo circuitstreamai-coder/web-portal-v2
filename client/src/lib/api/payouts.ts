@@ -95,37 +95,3 @@ export async function updatePayoutRate(
     updatedAt: rate.updatedAt,
   };
 }
-
-export async function disputePayout(id: string): Promise<PayoutRecord> {
-  return restRequest<PayoutRecord>(`/api/payouts/${id}/dispute`, {
-    method: 'PATCH',
-  });
-}
-
-export interface CreatePayoutInput {
-  ticketId: string;
-  engineerId: string;
-  categoryId?: string;
-}
-
-export async function createPayout(input: CreatePayoutInput): Promise<PayoutRecord> {
-  const record = await restRequest<Partial<PayoutRecord>>('/api/payouts', {
-    method: 'POST',
-    body: JSON.stringify(input),
-  });
-  const payoutAmount = Number(record.payoutAmount ?? record.amount ?? 0);
-  return {
-    id: record.id ?? '',
-    ticketId: record.ticketId ?? input.ticketId,
-    ticketNumber: record.ticketNumber,
-    engineerId: record.engineerId ?? input.engineerId,
-    engineerName: record.engineerName,
-    callType: record.callType ?? '',
-    payoutAmount,
-    amount: payoutAmount,
-    currency: record.currency ?? 'INR',
-    status: (record.status as PayoutRecord['status']) ?? 'pending',
-    creditedAt: record.creditedAt,
-    createdAt: record.createdAt ?? new Date().toISOString(),
-  };
-}

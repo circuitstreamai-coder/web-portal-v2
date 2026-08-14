@@ -6,4 +6,9 @@
   <title>Customers · National Head · Innoserve Techsol</title>
 </svelte:head>
 
-<CustomersView canDelete={false} />
+<CustomersView
+  canCreate={false}
+  canEdit={false}
+  canDelete={false}
+  canChangeAccountStatus={false}
+/>

@@ -12,6 +12,7 @@ export type Role =
   | 'noc'
   | 'state_planner'
   | 'project_head'
+  | 'asset_manager'
   | 'vendor';
 
 export type TicketStatus =
@@ -44,6 +45,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   noc:          'NOC',
   state_planner:'State Planner',
   project_head: 'Project Head',
+  asset_manager:'Asset Manager',
   vendor:       'Vendor Support',
 };
 
@@ -57,6 +59,7 @@ export const ROLE_BADGE_COLORS: Record<Role, string> = {
   noc:          'bg-purple-700 text-white',
   state_planner:'bg-amber-600 text-white',
   project_head: 'bg-rose-700 text-white',
+  asset_manager:'bg-cyan-700 text-white',
   vendor:       'bg-teal-600 text-white',
 };
 
@@ -72,6 +75,7 @@ export const ROLE_REDIRECTS: Record<Role, string> = {
   noc:          '/noc',
   state_planner:'/planner',
   project_head: '/project-head/dashboard',
+  asset_manager:'/inventory',
   vendor:       '/vendor',
 };
 
@@ -99,6 +103,7 @@ export const ROLE_STATUS_OPTIONS: Record<Role, TicketStatus[]> = {
   state_planner:['assigned'],
   noc:          ['open', 'assigned', 'pending_validation', 'closed'],
   project_head: ['pending_validation', 'closed'],
+  asset_manager:[],
   engineer:     ['accepted', 'in_progress', 'resolved'],
   l2_engineer:  ['accepted', 'in_progress', 'resolved'],
   l3_engineer:  ['accepted', 'in_progress', 'resolved'],
@@ -240,6 +245,15 @@ export const ROLE_PERMISSIONS: Record<Role, RolePermissions> = {
     canViewAllTickets:   false,
     canManageProjects:   false,
     canViewReports:      false,
+  },
+  asset_manager: {
+    canApproveCustomers: false,
+    canApproveEngineers: false,
+    canCreateTickets:    false,
+    canAssignEngineers:   false,
+    canViewAllTickets:    false,
+    canManageProjects:    false,
+    canViewReports:       false,
   },
   vendor: {
     canApproveCustomers: false,

@@ -2,6 +2,8 @@ import type { FastifyRequest, FastifyReply } from "fastify";
 import {
   createCustomer,
   approveCustomer,
+  rejectCustomer,
+  deleteCustomer,
   listCustomers,
   setCustomerStatus,
   updateCustomer,
@@ -51,6 +53,36 @@ export async function approveCustomerHandler(
   }
 }
 
+export async function rejectCustomerHandler(
+  req: FastifyRequest,
+  reply: FastifyReply,
+) {
+  try {
+    const { id } = req.params as { id: string };
+    const customer = await rejectCustomer(id, req.user.id);
+    return reply.send(customer);
+  } catch (err: any) {
+    return reply
+      .code(err.statusCode ?? 500)
+      .send({ error: err.message ?? "Internal server error" });
+  }
+}
+
+export async function deleteCustomerHandler(
+  req: FastifyRequest,
+  reply: FastifyReply,
+) {
+  try {
+    const { id } = req.params as { id: string };
+    await deleteCustomer(id);
+    return reply.code(204).send();
+  } catch (err: any) {
+    return reply
+      .code(err.statusCode ?? 500)
+      .send({ error: err.message ?? "Internal server error" });
+  }
+}
+
 export async function updateCustomerHandler(
   req: FastifyRequest,
   reply: FastifyReply,
@@ -92,7 +124,7 @@ export async function updateCustomerStatusHandler(
       return reply.code(400).send({ error: "status is required" });
     }
 
-    const validStatuses = ["pending", "pending_approval", "active", "rejected"];
+    const validStatuses = ["pending", "pending_approval", "active", "inactive", "rejected"];
     if (!validStatuses.includes(status)) {
       return reply
         .code(400)

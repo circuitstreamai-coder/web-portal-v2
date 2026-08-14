@@ -1,7 +1,7 @@
 import { eq, and, inArray } from "drizzle-orm";
 import { uuidv7 } from "uuidv7";
 import { db } from "../../db/db.js";
-import { customers, users } from "../../db/schema/index.js";
+import { customers, projects, tickets, users } from "../../db/schema/index.js";
 import { hashPassword } from "../../utils/hash.js";
 import {
   sendEmail,
@@ -39,44 +39,11 @@ export async function createCustomer(
 }
 
 export async function approveCustomer(id: string, approvedById: string) {
-  const [approver] = await db.select({ name: users.name, email: users.email }).from(users).where(eq(users.id, approvedById));
-  const approvedBy = approver?.name ?? approver?.email ?? approvedById;
+  return setCustomerStatus(id, "active", approvedById);
+}
 
-  const [customer] = await db
-    .update(customers)
-    .set({ status: "active", approvedBy, approvedAt: new Date() })
-    .where(and(eq(customers.id, id), eq(customers.deleted, false)))
-    .returning();
-
-  if (!customer) {
-    throw { statusCode: 404, message: "Customer not found" };
-  }
-
-  if (customer.userId) {
-    const [user] = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, customer.userId));
-
-    if (user && user.email) {
-      const plainPassword = generatePassword();
-      const hashedPassword = await hashPassword(plainPassword);
-      await db
-        .update(users)
-        .set({ password: hashedPassword, status: "active" })
-        .where(eq(users.id, user.id));
-      await sendEmail(
-        customerWelcomeEmail(
-          user.name ?? user.email,
-          user.email,
-          plainPassword,
-          customer.referenceId!,
-        ),
-      );
-    }
-  }
-
-  return customer;
+export async function rejectCustomer(id: string, approvedById: string) {
+  return setCustomerStatus(id, "rejected", approvedById);
 }
 
 /**
@@ -88,10 +55,51 @@ export async function setCustomerStatus(
   status: string,
   approvedById?: string,
 ) {
+  const [existingCustomer] = await db
+    .select()
+    .from(customers)
+    .where(and(eq(customers.id, id), eq(customers.deleted, false)));
+
+  if (!existingCustomer) {
+    throw { statusCode: 404, message: "Customer not found" };
+  }
+
   let approvedBy: string | undefined;
   if (approvedById) {
     const [approver] = await db.select({ name: users.name, email: users.email }).from(users).where(eq(users.id, approvedById));
     approvedBy = approver?.name ?? approver?.email ?? approvedById;
+  }
+
+  if (existingCustomer.userId) {
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(and(eq(users.id, existingCustomer.userId), eq(users.deleted, false)));
+
+    if (user && status === "active" && !user.password) {
+      if (!user.email) {
+        throw { statusCode: 400, message: "Customer login email is required before approval" };
+      }
+      const plainPassword = generatePassword();
+      const hashedPassword = await hashPassword(plainPassword);
+      await sendEmail(
+        customerWelcomeEmail(
+          user.name ?? user.email,
+          user.email,
+          plainPassword,
+          existingCustomer.referenceId!,
+        ),
+      );
+      await db
+        .update(users)
+        .set({ password: hashedPassword, status: "active" })
+        .where(eq(users.id, user.id));
+    } else if (user) {
+      await db
+        .update(users)
+        .set({ status: status === "active" ? "active" : status })
+        .where(eq(users.id, user.id));
+    }
   }
 
   const [customer] = await db
@@ -101,33 +109,40 @@ export async function setCustomerStatus(
       approvedBy,
       approvedAt: status === "active" ? new Date() : null,
     })
-    .where(eq(customers.id, id))
+    .where(and(eq(customers.id, id), eq(customers.deleted, false)))
     .returning();
 
   if (!customer) throw { statusCode: 404, message: "Customer not found" };
 
-  if (status === "active" && customer.userId) {
-    const [user] = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, customer.userId));
+  return customer;
+}
 
-    if (user && user.email) {
-      const plainPassword = generatePassword();
-      const hashedPassword = await hashPassword(plainPassword);
-      await db
-        .update(users)
-        .set({ password: hashedPassword, status: "active" })
-        .where(eq(users.id, user.id));
-      await sendEmail(
-        customerWelcomeEmail(
-          user.name ?? user.email,
-          user.email,
-          plainPassword,
-          customer.referenceId!,
-        ),
-      );
-    }
+export async function deleteCustomer(id: string) {
+  const [customer] = await db
+    .update(customers)
+    .set({ deleted: true, status: "inactive" })
+    .where(and(eq(customers.id, id), eq(customers.deleted, false)))
+    .returning();
+
+  if (!customer) {
+    throw { statusCode: 404, message: "Customer not found" };
+  }
+
+  if (customer.userId) {
+    await db
+      .update(users)
+      .set({ deleted: true, status: "inactive" })
+      .where(eq(users.id, customer.userId));
+  }
+
+  const customerProjects = await db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(and(eq(projects.customerId, customer.id), eq(projects.deleted, false)));
+  const projectIds = customerProjects.map((project) => project.id);
+  if (projectIds.length > 0) {
+    await db.update(tickets).set({ deleted: true }).where(inArray(tickets.projectId, projectIds));
+    await db.update(projects).set({ deleted: true }).where(inArray(projects.id, projectIds));
   }
 
   return customer;

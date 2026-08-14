@@ -8,6 +8,7 @@ import {
   listProjectsHandler,
   assignHeadHandler,
   updateProjectHandler,
+  deleteProjectHandler,
 } from "./project.controller.js";
 
 export async function projectRoutes(app: FastifyInstance) {
@@ -30,6 +31,12 @@ export async function projectRoutes(app: FastifyInstance) {
     "/api/projects/:id",
     { preHandler: [authenticate, onlySuperAdmin] },
     updateProjectHandler,
+  );
+
+  app.delete(
+    "/api/projects/:id",
+    { preHandler: [authenticate, onlySuperAdmin] },
+    deleteProjectHandler,
   );
 
   // super_admin only

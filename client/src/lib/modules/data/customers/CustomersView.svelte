@@ -8,6 +8,8 @@
     createCustomer,
     updateCustomer,
     updateCustomerStatus,
+    approveCustomer,
+    rejectCustomer,
     deleteCustomer,
   } from "./actions";
   import { toast } from "svelte-sonner";
@@ -15,10 +17,28 @@
   import MaskedContact from "$lib/components/MaskedContact.svelte";
 
   interface Props {
+    canCreate?: boolean;
+    canEdit?: boolean;
     canDelete?: boolean;
+    canChangeAccountStatus?: boolean;
   }
 
-  let { canDelete = true }: Props = $props();
+  let {
+    canCreate = true,
+    canEdit = true,
+    canDelete = true,
+    canChangeAccountStatus = true,
+  }: Props = $props();
+
+  function isPendingCustomer(status: string) {
+    return status === "pending" || status === "pending_approval";
+  }
+
+  function statusLabel(status: string) {
+    return isPendingCustomer(status)
+      ? "Pending"
+      : status.charAt(0).toUpperCase() + status.slice(1);
+  }
 
   let customers = $state<Customer[]>([]);
   let loading = $state(true);
@@ -29,7 +49,7 @@
     customers.filter((c) => c.status === "active").length,
   );
   const pendingCustomers = $derived(
-    customers.filter((c) => c.status === "pending").length,
+    customers.filter((c) => isPendingCustomer(c.status)).length,
   );
 
   const statCards = $derived([
@@ -82,7 +102,12 @@
   const filteredCustomers = $derived(() => {
     const q = searchQuery.trim().toLowerCase();
     return customers.filter((c) => {
-      if (filterStatus !== "all" && c.status !== filterStatus) return false;
+      if (
+        filterStatus !== "all" &&
+        (filterStatus !== "pending"
+          ? c.status !== filterStatus
+          : !isPendingCustomer(c.status))
+      ) return false;
       if (filterState !== "all" && c.addressState !== filterState) return false;
       if (q) {
         return (
@@ -186,8 +211,7 @@
             val = [c.addressCity, c.addressState, c.addressPincode]
               .filter(Boolean)
               .join(", ");
-          if (col.key === "status")
-            val = c.status === "pending" ? "Pending" : c.status;
+          if (col.key === "status") val = statusLabel(c.status);
           val = val.replace(/"/g, '""');
           if (val.includes(",") || val.includes('"') || val.includes("\n"))
             val = `"${val}"`;
@@ -228,11 +252,7 @@
       action: async () => {
         actionLoadingId = customer.id;
         try {
-          const updated = await updateCustomerStatus({
-            id: customer.id,
-            status: "active",
-            approvedBy: "admin",
-          });
+          const updated = await approveCustomer(customer.id);
           customers = customers.map((c) =>
             c.id === updated.id ? { ...c, ...updated } : c,
           );
@@ -253,10 +273,7 @@
       action: async () => {
         actionLoadingId = customer.id;
         try {
-          const updated = await updateCustomerStatus({
-            id: customer.id,
-            status: "rejected",
-          });
+          const updated = await rejectCustomer(customer.id);
           customers = customers.map((c) =>
             c.id === updated.id ? { ...c, ...updated } : c,
           );
@@ -330,7 +347,7 @@
 
   function statusStyle(status: string) {
     if (status === "active")   return "bg-green-50 text-green-600";
-    if (status === "pending")  return "bg-amber-50 text-amber-600";
+    if (isPendingCustomer(status)) return "bg-amber-50 text-amber-600";
     if (status === "rejected") return "bg-red-50 text-red-500";
     if (status === "inactive") return "bg-gray-100 text-gray-500";
     return "bg-gray-100 text-gray-500";
@@ -599,13 +616,15 @@
       {/if}
     </div>
 
-    <button
-      onclick={openAdd}
-      class="flex items-center gap-1.5 p-3 bg-[linear-gradient(to_bottom,#0B182A,#021E44)] hover:opacity-90 active:scale-[0.97] text-white text-[13px] font-semibold rounded-lg cursor-pointer border-none transition-all ml-auto"
-    >
-      <Icons.Plus size={14} strokeWidth={2.5} />
-      Add Customer
-    </button>
+    {#if canCreate}
+      <button
+        onclick={openAdd}
+        class="flex items-center gap-1.5 p-3 bg-[linear-gradient(to_bottom,#0B182A,#021E44)] hover:opacity-90 active:scale-[0.97] text-white text-[13px] font-semibold rounded-lg cursor-pointer border-none transition-all ml-auto"
+      >
+        <Icons.Plus size={14} strokeWidth={2.5} />
+        Add Customer
+      </button>
+    {/if}
   </div>
 
   <!-- Table -->
@@ -787,14 +806,14 @@
                         c.status,
                       )}"
                     >
-                      {c.status === "pending" ? "Pending" : c.status}
+                      {statusLabel(c.status)}
                     </span>
                   </td>
                 {/if}
                 {#if visibleCols.has("actions")}
                   <td class="py-3 px-3">
                     <div class="flex gap-1">
-                      {#if c.status === "pending"}
+                      {#if isPendingCustomer(c.status)}
                         <button
                           aria-label="Approve customer"
                           onclick={() => promptApprove(c)}
@@ -817,7 +836,7 @@
                           >Reject</button
                         >
                       {/if}
-                      {#if c.status === "active"}
+                      {#if canChangeAccountStatus && c.status === "active"}
                         <button
                           aria-label="Deactivate customer"
                           onclick={() => promptDeactivate(c)}
@@ -826,7 +845,7 @@
                           >Deactivate</button
                         >
                       {/if}
-                      {#if c.status === "inactive"}
+                      {#if canChangeAccountStatus && c.status === "inactive"}
                         <button
                           aria-label="Reactivate customer"
                           onclick={() => promptReactivate(c)}
@@ -842,13 +861,15 @@
                       >
                         <Icons.Eye size={16} />
                       </button>
-                      <button
-                        aria-label="Edit customer"
-                        onclick={() => openEdit(c)}
-                        class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-[#0B182A] hover:bg-gray-100 active:scale-90 transition-all cursor-pointer"
-                      >
-                        <Icons.Edit size={16} />
-                      </button>
+                      {#if canEdit}
+                        <button
+                          aria-label="Edit customer"
+                          onclick={() => openEdit(c)}
+                          class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-[#0B182A] hover:bg-gray-100 active:scale-90 transition-all cursor-pointer"
+                        >
+                          <Icons.Edit size={16} />
+                        </button>
+                      {/if}
                       {#if canDelete}
                         <button
                           aria-label="Delete customer"
@@ -930,7 +951,7 @@
   <CustomerView
     customer={viewCustomer}
     onClose={() => (viewCustomer = null)}
-    onEdit={() => openEdit(viewCustomer!)}
+    onEdit={canEdit ? () => openEdit(viewCustomer!) : undefined}
   />
 {/if}
 

@@ -34,6 +34,11 @@ export async function getEngineerProfileHandler(
   try {
     const { id } = req.params as { id: string };
     const profile = await getEngineerProfile(id);
+    const isEngineer = ["engineer", "l2_engineer", "l3_engineer"].includes(req.user.role);
+    const isStaff = ["super_admin", "noc", "state_planner", "project_head", "national_head"].includes(req.user.role);
+    if ((!isStaff && !isEngineer) || (isEngineer && profile.userId !== req.user.id)) {
+      return reply.code(403).send({ error: "Forbidden" });
+    }
     return reply.send(profile);
   } catch (err: any) {
     return reply
@@ -48,6 +53,12 @@ export async function updateEngineerProfileHandler(
 ) {
   try {
     const { id } = req.params as { id: string };
+    const existing = await getEngineerProfile(id);
+    const isEngineer = ["engineer", "l2_engineer", "l3_engineer"].includes(req.user.role);
+    const canManage = ["super_admin", "national_head"].includes(req.user.role);
+    if ((!canManage && !isEngineer) || (isEngineer && existing.userId !== req.user.id)) {
+      return reply.code(403).send({ error: "Forbidden" });
+    }
     const body = req.body as UpdateEngineerProfileBody;
     const profile = await updateEngineerProfile(id, body);
     return reply.send(profile);

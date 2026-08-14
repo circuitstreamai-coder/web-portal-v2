@@ -2,7 +2,6 @@ import type { FastifyInstance } from "fastify";
 import {
   authenticate,
   authorize,
-  onlyStaff,
 } from "../../plugins/authMiddleware.js";
 import {
   listEngineerProfilesHandler,
@@ -37,10 +36,10 @@ export async function engineerProfileRoutes(app: FastifyInstance) {
     updateEngineerProfileHandler,
   );
 
-  // Staff only — review engineer KYC documents
+  // Designated approvers only — review engineer KYC documents
   app.patch(
     "/api/engineer-profiles/:id/documents-status",
-    { preHandler: [authenticate, onlyStaff] },
+    { preHandler: [authenticate, onlyApprovers] },
     updateDocumentsStatusHandler,
   );
 
