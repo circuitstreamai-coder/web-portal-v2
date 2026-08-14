@@ -3,6 +3,7 @@
 	import * as Icons from '$lib/icons';
 	import { toast } from 'svelte-sonner';
 	import { restRequest } from '$lib/api/rest';
+	import { fileUrl, uploadFile } from '$lib/api/upload';
 
 	interface PurchaseOrder {
 		id: string;
@@ -14,6 +15,7 @@
 		totalAmount: number | null;
 		notes: string | null;
 		items: POItem[];
+		attachmentFileId: number;
 		createdAt: string;
 	}
 
@@ -32,6 +34,7 @@
 	let editOrder = $state<PurchaseOrder | null>(null);
 	let deleteTarget = $state<PurchaseOrder | null>(null);
 	let deleting  = $state(false);
+	let poFile = $state<File | null>(null);
 
 	let filterStatus = $state('');
 	let searchQuery  = $state('');
@@ -68,6 +71,7 @@
 	function openAdd() {
 		editOrder = null;
 		form = { poNumber: '', supplierName: '', orderDate: new Date().toISOString().slice(0,10), expectedDelivery: '', status: 'pending', totalAmount: '', notes: '' };
+		poFile = null;
 		showForm = true;
 	}
 
@@ -82,6 +86,7 @@
 			totalAmount: o.totalAmount != null ? String(o.totalAmount) : '',
 			notes: o.notes ?? '',
 		};
+		poFile = null;
 		showForm = true;
 	}
 
@@ -93,6 +98,11 @@
 		}
 		saving = true;
 		try {
+			if (!editOrder && !poFile) {
+				toast.error('Purchase order document is required');
+				return;
+			}
+			const attachmentFileId = poFile ? await uploadFile(poFile) : editOrder?.attachmentFileId;
 			const body = {
 				poNumber: form.poNumber.trim(),
 				supplierName: form.supplierName.trim(),
@@ -101,6 +111,7 @@
 				status: form.status,
 				totalAmount: form.totalAmount ? Number(form.totalAmount) : null,
 				notes: form.notes || null,
+				attachmentFileId,
 			};
 			if (editOrder) {
 				const updated = await restRequest<PurchaseOrder>(`/api/inventory/purchase-orders/${editOrder.id}`, {
@@ -233,7 +244,7 @@
 				<table class="w-full text-sm border-collapse">
 					<thead>
 						<tr class="border-b border-gray-100">
-							{#each ['PO NUMBER', 'SUPPLIER', 'ORDER DATE', 'EXP. DELIVERY', 'STATUS', 'AMOUNT', 'ACTIONS'] as col}
+							{#each ['PO NUMBER', 'SUPPLIER', 'ORDER DATE', 'EXP. DELIVERY', 'STATUS', 'AMOUNT', 'DOCUMENT', 'ACTIONS'] as col}
 								<th class="text-left text-[11px] font-semibold text-gray-400 tracking-wide py-3 px-3 whitespace-nowrap">{col}</th>
 							{/each}
 						</tr>
@@ -252,6 +263,9 @@
 								</td>
 								<td class="py-3 px-3 text-[13px] text-gray-700">
 									{o.totalAmount != null ? `₹${o.totalAmount.toLocaleString('en-IN')}` : '—'}
+								</td>
+								<td class="py-3 px-3 text-[12px]">
+									<a href={fileUrl(o.attachmentFileId)} target="_blank" rel="noreferrer" class="font-semibold text-[#0B5EA8] hover:text-[#E87D1F] hover:underline">View PO</a>
 								</td>
 								<td class="py-3 px-3">
 									<div class="flex gap-1">
@@ -320,6 +334,19 @@
 				<label class="flex flex-col gap-1.5">
 					<span class="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Notes</span>
 					<textarea bind:value={form.notes} rows="2" placeholder="Additional notes…" class="{fieldClass} resize-none"></textarea>
+				</label>
+				<label class="flex flex-col gap-1.5">
+					<span class="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">PO Document {editOrder ? '(replace)' : '*'}</span>
+					<input
+						type="file"
+						accept="application/pdf,image/jpeg,image/png,image/webp"
+						required={!editOrder}
+						onchange={(event) => (poFile = (event.currentTarget as HTMLInputElement).files?.[0] ?? null)}
+						class="block w-full rounded-lg border border-gray-200 px-3 py-2 text-[12px] text-gray-600 file:mr-3 file:rounded-md file:border-0 file:bg-gray-100 file:px-3 file:py-1.5 file:text-[12px] file:font-semibold"
+					/>
+					{#if editOrder && !poFile}
+						<a href={fileUrl(editOrder.attachmentFileId)} target="_blank" rel="noreferrer" class="text-[11px] text-[#0B5EA8] hover:underline">View current document</a>
+					{/if}
 				</label>
 				<div class="flex justify-end gap-3 pt-2 border-t border-gray-100">
 					<button type="button" onclick={() => (showForm = false)} class="px-5 py-2.5 text-[13px] text-gray-600 border border-gray-200 rounded-lg hover:border-gray-400 cursor-pointer">Cancel</button>

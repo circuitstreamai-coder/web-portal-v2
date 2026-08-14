@@ -63,6 +63,10 @@ Never commit real values to Git or expose the Resend key in Vercel/browser code.
 Railway runs database migrations before deployment and checks `/ready`. A release
 will not become healthy unless PostgreSQL and an email provider are configured.
 
+The current release includes migrations `0006`–`0008`. Confirm the Railway
+pre-deploy log contains `Migrations applied successfully` before testing the new
+ticket timestamps, purchase orders, or automatic customer projects.
+
 ### 3. Vercel frontend variable
 
 Set this variable for Production and Preview:
@@ -84,6 +88,17 @@ Verify all of the following before announcing the launch:
 4. Login, logout, and forgot-password email work.
 5. An authenticated user can upload and retrieve an allowed file.
 6. The browser console has no failed API requests on each role dashboard.
+7. A customer created by Super Admin receives credentials, can log in, sees the
+   automatically created General Support project, and can raise a ticket.
+8. An older customer with no linked login shows **Create Access** in Admin and
+   receives working credentials after that action is confirmed.
+9. An engineer can accept a ticket and use an available inventory item; ticket
+   export includes Created, Received, and Closed timestamps.
+10. Super Admin can upload, view, update, and delete a purchase order under
+    Inventory → PO Tracking.
+11. Two different roles can remain signed in in separate tabs of the same browser.
+12. Multiple NOC operators can be created and each sees tickets only for their
+    assigned state.
 
 ## Phase B: client-owned production handover
 

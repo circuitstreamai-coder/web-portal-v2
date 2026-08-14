@@ -15,6 +15,7 @@
   import { ROLE_LABELS, type Role as RoleName } from "$lib/config/roles";
   import Pagination from "$lib/components/Pagination.svelte";
   import { Search, X } from "$lib/icons";
+  import { restRequest } from "$lib/api/rest";
 
   // ── State ──────────────────────────────────────────────────────────────────
 
@@ -23,6 +24,10 @@
   let userRoles = $state<UserRole[]>([]);
   let loading = $state(true);
   let search = $state("");
+  let nocUsers = $state<Array<{ id: string; name: string; email: string; phone?: string; state?: string }>>([]);
+  let showNocForm = $state(false);
+  let nocSubmitting = $state(false);
+  let nocForm = $state({ name: "", email: "", phone: "", state: "" });
 
   // Modal state
   let selectedEng = $state<EngineerProfile | null>(null);
@@ -73,6 +78,7 @@
     roles.find((r) => r.id === selectedRoleId)?.name ?? "",
   );
   const isStatePlanner = $derived(selectedRoleName === "state_planner");
+  const requiresState = $derived(selectedRoleName === "state_planner" || selectedRoleName === "noc");
 
   // Roles that can be assigned (excludes super_admin and customer)
   const ASSIGNABLE: RoleName[] = [
@@ -131,10 +137,11 @@
 
   onMount(async () => {
     try {
-      [engineers, roles, userRoles] = await Promise.all([
+      [engineers, roles, userRoles, nocUsers] = await Promise.all([
         fetchEngineerProfiles(),
         fetchRoles(),
         fetchUserRoles(),
+        restRequest<Array<{ id: string; name: string; email: string; phone?: string; state?: string }>>('/api/users?role=noc'),
       ]);
     } catch (err) {
       toast.error("Failed to load data");
@@ -158,7 +165,7 @@
         userId: selectedEng.userId,
         roleId: selectedRoleId,
         author: "admin",
-        state: isStatePlanner ? selectedState || undefined : undefined,
+        state: requiresState ? selectedState || undefined : undefined,
       });
       const roleName = roles.find((r) => r.id === selectedRoleId)?.name ?? "";
       const label = ROLE_LABELS[roleName as RoleName] ?? roleName;
@@ -173,7 +180,7 @@
         userId: selectedEng.userId,
         roleId: selectedRoleId,
         author: "admin",
-        state: isStatePlanner ? selectedState || undefined : undefined,
+        state: requiresState ? selectedState || undefined : undefined,
         createdAt: new Date().toISOString(),
       };
       userRoles = [
@@ -186,6 +193,26 @@
       toast.error((err as Error).message);
     } finally {
       submitting = false;
+    }
+  }
+
+  async function createNocOperator(event: Event) {
+    event.preventDefault();
+    if (!nocForm.name.trim() || !nocForm.email.trim() || !nocForm.state) return;
+    nocSubmitting = true;
+    try {
+      const created = await restRequest<{ id: string; name: string; email: string; phone?: string; state?: string }>("/api/users/staff", {
+        method: "POST",
+        body: JSON.stringify({ ...nocForm, role: "noc" }),
+      });
+      nocUsers = [...nocUsers, created];
+      nocForm = { name: "", email: "", phone: "", state: "" };
+      showNocForm = false;
+      toast.success("NOC operator created and credentials emailed");
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      nocSubmitting = false;
     }
   }
 
@@ -211,6 +238,29 @@
 >
 
 <div class="flex flex-col gap-5">
+  <section class="rounded-2xl bg-white p-6 shadow">
+    <div class="flex items-center justify-between gap-3">
+      <div>
+        <h3 class="text-[18px] font-semibold text-[#0B182A]">NOC Operators</h3>
+        <p class="mt-1 text-[12px] text-gray-400">Create multiple operators and segregate their ticket access by state.</p>
+      </div>
+      <button onclick={() => (showNocForm = true)} class="rounded-lg bg-[#E87D1F] px-4 py-2.5 text-[13px] font-semibold text-white">Add NOC Operator</button>
+    </div>
+    <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+      {#each nocUsers as operator}
+        <div class="rounded-xl border border-gray-100 px-4 py-3">
+          <p class="text-[13px] font-semibold text-[#0B182A]">{operator.name}</p>
+          <p class="text-[12px] text-gray-500">{operator.email}</p>
+          <div class="mt-2 flex items-center justify-between text-[11px]">
+            <span class="rounded-full bg-blue-50 px-2 py-1 font-semibold text-blue-700">{operator.state ?? "All states"}</span>
+            <span class="text-gray-400">{operator.phone ?? "No phone"}</span>
+          </div>
+        </div>
+      {:else}
+        <p class="text-[13px] text-gray-400">No NOC operators created yet.</p>
+      {/each}
+    </div>
+  </section>
   <!-- Filter bar -->
   <div
     class="flex items-center gap-3 flex-wrap bg-white rounded-xl px-5 py-4 shadow"
@@ -421,7 +471,7 @@
         </label>
 
         <!-- State selector (only for State Planner) -->
-        {#if isStatePlanner}
+        {#if requiresState}
           <label class="flex flex-col gap-1.5">
             <span
               class="text-[11px] font-semibold text-gray-500 uppercase tracking-wide"
@@ -431,7 +481,7 @@
             <select
               class={fieldClass}
               bind:value={selectedState}
-              required={isStatePlanner}
+              required={requiresState}
             >
               <option value="">— Select a state —</option>
               {#each INDIAN_STATES as state}
@@ -454,7 +504,7 @@
             type="submit"
             disabled={submitting ||
               !selectedRoleId ||
-              (isStatePlanner && !selectedState)}
+              (requiresState && !selectedState)}
             class="px-5 py-2.5 text-[13px] text-white font-semibold bg-[linear-gradient(to_bottom,#0B182A,#021E44)] rounded-lg hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-60"
           >
             {submitting ? "Assigning…" : "Assign Role"}
@@ -462,5 +512,25 @@
         </div>
       </form>
     </div>
+  </div>
+{/if}
+
+{#if showNocForm}
+  <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <button type="button" class="absolute inset-0 bg-black/50" aria-label="Close" onclick={() => (showNocForm = false)}></button>
+    <form class="relative z-10 w-full max-w-md space-y-4 rounded-2xl bg-white p-6 shadow-2xl" onsubmit={createNocOperator}>
+      <div>
+        <h2 class="text-[17px] font-semibold text-[#0B182A]">Add NOC Operator</h2>
+        <p class="mt-1 text-[12px] text-gray-400">An active account and temporary password will be emailed automatically.</p>
+      </div>
+      <label class="flex flex-col gap-1.5"><span class="text-[11px] font-semibold uppercase text-gray-500">Name *</span><input class={fieldClass} bind:value={nocForm.name} required /></label>
+      <label class="flex flex-col gap-1.5"><span class="text-[11px] font-semibold uppercase text-gray-500">Email *</span><input class={fieldClass} type="email" bind:value={nocForm.email} required /></label>
+      <label class="flex flex-col gap-1.5"><span class="text-[11px] font-semibold uppercase text-gray-500">Phone</span><input class={fieldClass} type="tel" bind:value={nocForm.phone} pattern="[6-9][0-9]{9}" /></label>
+      <label class="flex flex-col gap-1.5"><span class="text-[11px] font-semibold uppercase text-gray-500">Assigned State *</span><select class={fieldClass} bind:value={nocForm.state} required><option value="">— Select state —</option>{#each INDIAN_STATES as state}<option value={state}>{state}</option>{/each}</select></label>
+      <div class="flex justify-end gap-3 border-t border-gray-100 pt-4">
+        <button type="button" onclick={() => (showNocForm = false)} class="rounded-lg border border-gray-200 px-4 py-2.5 text-[13px] text-gray-600">Cancel</button>
+        <button type="submit" disabled={nocSubmitting} class="rounded-lg bg-[#0B182A] px-5 py-2.5 text-[13px] font-semibold text-white disabled:opacity-60">{nocSubmitting ? "Creating…" : "Create Operator"}</button>
+      </div>
+    </form>
   </div>
 {/if}

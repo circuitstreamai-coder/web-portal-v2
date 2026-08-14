@@ -7,12 +7,14 @@ import {
   listCustomers,
   setCustomerStatus,
   updateCustomer,
+  provisionCustomerAccess,
 } from "./customer.service.js";
 import type {
   CreateCustomerBody,
   UpdateCustomerBody,
   UpdateCustomerStatusBody,
 } from "./customer.schema.js";
+import { roleCookieName, type JwtPayload } from "../auth/auth.schema.js";
 
 export async function createCustomerHandler(
   req: FastifyRequest,
@@ -21,7 +23,14 @@ export async function createCustomerHandler(
   // Optionally authenticated: admin-created → active, self-registration → pending
   let isAdmin = false;
   try {
-    await req.jwtVerify({ onlyCookie: true });
+    const requestedRole = typeof req.headers["x-portal-role"] === "string" ? req.headers["x-portal-role"] : undefined;
+    if (requestedRole) {
+      const token = req.cookies[roleCookieName(requestedRole)];
+      if (!token) throw new Error("Role session not found");
+      req.user = req.server.jwt.verify<JwtPayload>(token);
+    } else {
+      await req.jwtVerify({ onlyCookie: true });
+    }
     isAdmin = req.user.role === "super_admin";
   } catch {
     // unauthenticated self-registration — status will be pending
@@ -29,7 +38,7 @@ export async function createCustomerHandler(
 
   try {
     const body = req.body as CreateCustomerBody;
-    const customer = await createCustomer(body, isAdmin);
+    const customer = await createCustomer(body, isAdmin, isAdmin ? req.user.id : undefined);
     return reply.code(201).send(customer);
   } catch (err: any) {
     return reply
@@ -50,6 +59,15 @@ export async function approveCustomerHandler(
     return reply
       .code(err.statusCode ?? 500)
       .send({ error: err.message ?? "Internal server error" });
+  }
+}
+
+export async function provisionCustomerAccessHandler(req: FastifyRequest, reply: FastifyReply) {
+  try {
+    const { id } = req.params as { id: string };
+    return reply.send(await provisionCustomerAccess(id, req.user.id));
+  } catch (err: any) {
+    return reply.code(err.statusCode ?? 500).send({ error: err.message ?? "Internal server error" });
   }
 }
 

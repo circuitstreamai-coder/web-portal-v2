@@ -1,5 +1,5 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
-import { listUsers, updateUserProfile } from "./user.service.js";
+import { createStaffUser, listUsers, updateUserProfile } from "./user.service.js";
 import { uploadFile } from "../files/file.service.js";
 
 export async function updateMeHandler(
@@ -53,5 +53,14 @@ export async function listUsersHandler(
     return reply.send(users);
   } catch (err: any) {
     return reply.status(err.statusCode ?? 500).send({ error: err.message ?? "Internal server error" });
+  }
+}
+
+export async function createStaffUserHandler(req: FastifyRequest, reply: FastifyReply) {
+  try {
+    const user = await createStaffUser(req.body as any, req.user.id);
+    return reply.code(201).send(user);
+  } catch (err: any) {
+    return reply.code(err.statusCode ?? 500).send({ error: err.message ?? "Internal server error" });
   }
 }

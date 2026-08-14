@@ -209,6 +209,7 @@
   let searchQuery    = $state("");
   let filterStatus   = $state<string>("all");
   let filterState    = $state<string>("all");
+  let sortPincode    = $state<"none" | "asc" | "desc">("none");
   let showStatusDrop = $state(false);
   let showStateDrop  = $state(false);
 
@@ -218,7 +219,7 @@
 
   const filteredEngineers = $derived(() => {
     const q = searchQuery.trim().toLowerCase();
-    return engineers.filter(e => {
+    const filtered = engineers.filter(e => {
       if (filterStatus !== "all" && e.documentsStatus !== filterStatus) return false;
       if (filterState  !== "all" && e.addressState    !== filterState)  return false;
       if (q) {
@@ -228,10 +229,16 @@
           (e.userPhone     ?? "").toLowerCase().includes(q) ||
           (e.referenceId   ?? "").toLowerCase().includes(q) ||
           (e.addressState  ?? "").toLowerCase().includes(q) ||
-          (e.addressCity   ?? "").toLowerCase().includes(q)
+          (e.addressCity   ?? "").toLowerCase().includes(q) ||
+          (e.addressPincode ?? "").toLowerCase().includes(q)
         );
       }
       return true;
+    });
+    if (sortPincode === "none") return filtered;
+    return [...filtered].sort((a, b) => {
+      const comparison = (a.addressPincode ?? "").localeCompare(b.addressPincode ?? "", "en", { numeric: true });
+      return sortPincode === "asc" ? comparison : -comparison;
     });
   });
 
@@ -240,7 +247,7 @@
   let currentPage = $state(1);
 
   $effect(() => {
-    searchQuery; filterStatus; filterState;
+    searchQuery; filterStatus; filterState; sortPincode;
     currentPage = 1;
   });
 
@@ -382,6 +389,16 @@
         </div>
       {/if}
     </div>
+
+    <select
+      bind:value={sortPincode}
+      aria-label="Sort engineers by pincode"
+      class="p-3 border border-gray-200 rounded-lg text-[13px] text-gray-600 bg-white outline-none focus:border-[#0B182A]"
+    >
+      <option value="none">Pincode: Default</option>
+      <option value="asc">Pincode: Low to High</option>
+      <option value="desc">Pincode: High to Low</option>
+    </select>
   </div>
 
   <!-- Engineer Cards Grid -->

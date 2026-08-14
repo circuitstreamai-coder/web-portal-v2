@@ -1,7 +1,7 @@
 import { eq, and, inArray } from "drizzle-orm";
 import { uuidv7 } from "uuidv7";
 import { db } from "../../db/db.js";
-import { customers, projects, tickets, users } from "../../db/schema/index.js";
+import { customers, projects, roles, tickets, userRoles, users } from "../../db/schema/index.js";
 import { hashPassword } from "../../utils/hash.js";
 import {
   sendEmail,
@@ -26,9 +26,100 @@ function generatePassword(length = 10): string {
 export async function createCustomer(
   data: CreateCustomerBody,
   isAdmin: boolean,
+  approvedById?: string,
 ) {
   const status = isAdmin ? "active" : "pending";
   const referenceId = generateReferenceId();
+
+  if (isAdmin) {
+    const normalizedEmail = data.email?.trim().toLowerCase();
+    if (!normalizedEmail) {
+      throw { statusCode: 400, message: "Customer email is required to create portal access" };
+    }
+
+    const [existingUser] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.email, normalizedEmail), eq(users.deleted, false)))
+      .limit(1);
+    if (existingUser) {
+      throw { statusCode: 409, message: "Email is already in use" };
+    }
+
+    const [customerRole] = await db
+      .select({ id: roles.id })
+      .from(roles)
+      .where(and(eq(roles.name, "customer"), eq(roles.deleted, false)))
+      .limit(1);
+    if (!customerRole) {
+      throw { statusCode: 500, message: "Customer role is not configured" };
+    }
+
+    const plainPassword = generatePassword();
+    const hashedPassword = await hashPassword(plainPassword);
+    let approvedBy: string | undefined;
+    if (approvedById) {
+      const [approver] = await db
+        .select({ name: users.name, email: users.email })
+        .from(users)
+        .where(eq(users.id, approvedById));
+      approvedBy = approver?.name ?? approver?.email ?? approvedById;
+    }
+
+    const customer = await db.transaction(async (tx) => {
+      const [user] = await tx
+        .insert(users)
+        .values({
+          name: data.contactPersonName,
+          email: normalizedEmail,
+          phone: data.phone,
+          password: hashedPassword,
+          status: "active",
+          approvedBy,
+          approvedAt: new Date(),
+          author: data.author ?? "admin",
+        })
+        .returning();
+
+      const [createdCustomer] = await tx
+        .insert(customers)
+        .values({
+          ...data,
+          email: normalizedEmail,
+          userId: user.id,
+          status,
+          referenceId,
+          approvedBy,
+          approvedAt: new Date(),
+        })
+        .returning();
+
+      await tx.insert(projects).values({
+        customerId: createdCustomer.id,
+        name: `${data.companyName?.trim() || "Customer"} - General Support`,
+        author: data.author ?? "admin",
+      });
+
+      await tx.insert(userRoles).values({
+        userId: user.id,
+        roleId: customerRole.id,
+        author: data.author ?? "admin",
+      });
+
+      await sendEmail(
+        customerWelcomeEmail(
+          data.contactPersonName ?? normalizedEmail,
+          normalizedEmail,
+          plainPassword,
+          referenceId,
+        ),
+      );
+
+      return createdCustomer;
+    });
+
+    return customer;
+  }
 
   const [customer] = await db
     .insert(customers)
@@ -40,6 +131,50 @@ export async function createCustomer(
 
 export async function approveCustomer(id: string, approvedById: string) {
   return setCustomerStatus(id, "active", approvedById);
+}
+
+export async function provisionCustomerAccess(id: string, approvedById: string) {
+  const [customer] = await db.select().from(customers)
+    .where(and(eq(customers.id, id), eq(customers.deleted, false))).limit(1);
+  if (!customer) throw { statusCode: 404, message: "Customer not found" };
+  if (customer.userId) throw { statusCode: 409, message: "Portal access is already linked" };
+  const email = customer.email?.trim().toLowerCase();
+  if (!email) throw { statusCode: 400, message: "Add a customer email before creating portal access" };
+
+  const [existingUser] = await db.select({ id: users.id }).from(users)
+    .where(and(eq(users.email, email), eq(users.deleted, false))).limit(1);
+  if (existingUser) throw { statusCode: 409, message: "Email already belongs to another portal account" };
+  const [customerRole] = await db.select({ id: roles.id }).from(roles)
+    .where(and(eq(roles.name, "customer"), eq(roles.deleted, false))).limit(1);
+  if (!customerRole) throw { statusCode: 500, message: "Customer role is not configured" };
+
+  const password = generatePassword();
+  const hashedPassword = await hashPassword(password);
+  const [approver] = await db.select({ name: users.name, email: users.email }).from(users).where(eq(users.id, approvedById));
+  const approvedBy = approver?.name ?? approver?.email ?? approvedById;
+
+  const updated = await db.transaction(async (tx) => {
+    const [user] = await tx.insert(users).values({
+      name: customer.contactPersonName,
+      email,
+      phone: customer.phone,
+      password: hashedPassword,
+      status: "active",
+      approvedBy,
+      approvedAt: new Date(),
+      author: approvedById,
+    }).returning();
+    await tx.insert(userRoles).values({ userId: user.id, roleId: customerRole.id, author: approvedById });
+    const [linked] = await tx.update(customers).set({
+      userId: user.id,
+      status: "active",
+      approvedBy,
+      approvedAt: new Date(),
+    }).where(eq(customers.id, customer.id)).returning();
+    await sendEmail(customerWelcomeEmail(customer.contactPersonName ?? email, email, password, customer.referenceId!));
+    return linked;
+  });
+  return updated;
 }
 
 export async function rejectCustomer(id: string, approvedById: string) {

@@ -1,3 +1,5 @@
+import { portalRoleHeaders } from '$lib/utils/portal-session';
+
 // REST fetch utility — sends credentials (HTTP-only cookie auth).
 
 export interface ApiFieldError {
@@ -65,11 +67,13 @@ export async function restRequest<T>(
   const { headers, body, ...rest } = init;
   const isFormData = body instanceof FormData;
 
+  const requestHeaders = isFormData || body === undefined
+    ? portalRoleHeaders(headers)
+    : portalRoleHeaders({ 'Content-Type': 'application/json', ...(headers as Record<string, string>) });
+
   const res = await fetch(path, {
     credentials: 'include',
-    headers: isFormData || body === undefined
-      ? ((headers as Record<string, string>) ?? {})
-      : { 'Content-Type': 'application/json', ...(headers as Record<string, string>) },
+    headers: requestHeaders,
     body,
     ...rest,
   });

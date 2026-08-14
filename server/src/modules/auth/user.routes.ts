@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
-import { authenticate } from "../../plugins/authMiddleware.js";
-import { listUsersHandler, updateMeHandler } from "./user.controller.js";
+import { authenticate, onlySuperAdmin } from "../../plugins/authMiddleware.js";
+import { createStaffUserHandler, listUsersHandler, updateMeHandler } from "./user.controller.js";
 
 export async function userRoutes(app: FastifyInstance) {
   app.get<{ Querystring: { role?: string } }>(
@@ -13,5 +13,11 @@ export async function userRoutes(app: FastifyInstance) {
     "/api/users/me",
     { preHandler: [authenticate] },
     updateMeHandler,
+  );
+
+  app.post(
+    "/api/users/staff",
+    { preHandler: [authenticate, onlySuperAdmin] },
+    createStaffUserHandler,
   );
 }

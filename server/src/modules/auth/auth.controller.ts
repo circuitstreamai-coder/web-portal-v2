@@ -9,6 +9,7 @@ import {
 import {
   COOKIE_NAME,
   COOKIE_OPTIONS,
+  roleCookieName,
   type LoginBody,
   type ChangePasswordBody,
   type ForgotPasswordBody,
@@ -78,8 +79,14 @@ export async function login(
     const { user, jwtPayload } = await loginUser(email, password);
     const token = req.server.jwt.sign(jwtPayload, { expiresIn: "7d" });
 
+    const sessionRole = ["engineer", "l2_engineer", "l3_engineer"].includes(user.role)
+      ? "engineer"
+      : user.role;
+
     return reply
       .setCookie(COOKIE_NAME, token, COOKIE_OPTIONS)
+      .setCookie(roleCookieName(user.role), token, COOKIE_OPTIONS)
+      .setCookie(roleCookieName(sessionRole), token, COOKIE_OPTIONS)
       .send({ user });
   } catch (err: any) {
     return reply
@@ -88,10 +95,12 @@ export async function login(
   }
 }
 
-export async function logout(_req: FastifyRequest, reply: FastifyReply) {
-  return reply
-    .clearCookie(COOKIE_NAME, { path: "/" })
-    .send({ success: true });
+export async function logout(req: FastifyRequest, reply: FastifyReply) {
+  const requestedRole = typeof req.headers["x-portal-role"] === "string"
+    ? req.headers["x-portal-role"]
+    : undefined;
+  if (requestedRole) reply.clearCookie(roleCookieName(requestedRole), { path: "/" });
+  return reply.clearCookie(COOKIE_NAME, { path: "/" }).send({ success: true });
 }
 
 export async function changePassword(

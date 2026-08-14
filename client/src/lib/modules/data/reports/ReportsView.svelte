@@ -147,9 +147,9 @@
   // ── Export CSV ────────────────────────────────────────────────────────────
   function exportCSV() {
     if (activeTab === "tickets") {
-      const header = "Ticket #,Project,Status,State,Priority,SLA Deadline,Created At";
+      const header = "Ticket #,Project,Status,State,Priority,SLA Deadline,Created At,Received At,Closed At";
       const rows = tickets.map(t =>
-        [t.ticketNumber, t.projectId, t.status, t.state, t.priority, t.slaDeadline ?? "", t.createdAt].join(",")
+        [t.ticketNumber, t.projectId, t.status, t.state, t.priority, t.slaDeadline ?? "", t.createdAt, t.receivedAt ?? "", t.closedAt ?? ""].join(",")
       );
       download("tickets-report.csv", [header, ...rows].join("\n"));
     } else if (activeTab === "engineers") {

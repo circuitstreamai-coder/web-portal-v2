@@ -1,3 +1,5 @@
+import { currentPortalRole, portalRoleHeaders } from "$lib/utils/portal-session";
+
 const UPLOAD_ENDPOINT = "/upload";
 
 /**
@@ -8,7 +10,7 @@ export async function uploadFile(file: File): Promise<number> {
   const fd = new FormData();
   fd.append("file", file);
 
-  const res = await fetch(UPLOAD_ENDPOINT, { method: "POST", credentials: "include", body: fd });
+  const res = await fetch(UPLOAD_ENDPOINT, { method: "POST", credentials: "include", headers: portalRoleHeaders(), body: fd });
 
   if (!res.ok) {
     throw new Error(`File upload failed (${file.name}): ${res.statusText}`);
@@ -24,5 +26,6 @@ export async function uploadFile(file: File): Promise<number> {
  * and via a reverse proxy in production.
  */
 export function fileUrl(id: number | string): string {
-  return `/file/${id}`;
+  const role = currentPortalRole();
+  return `/file/${id}${role ? `?portalRole=${encodeURIComponent(role)}` : ""}`;
 }

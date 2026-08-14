@@ -507,7 +507,7 @@
       await restRequest(`/api/tickets/${useItemTicket.id}/use-item`, {
         method: 'POST',
         body: JSON.stringify({
-          inventoryItemId: useItemForm.inventoryItemId,
+          itemId: useItemForm.inventoryItemId,
           quantity: Number(useItemForm.quantity),
         }),
       });

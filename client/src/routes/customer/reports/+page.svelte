@@ -98,9 +98,9 @@
 	}
 
 	function exportCSV() {
-		const header = 'Ticket #,Project,Status,Priority,SLA Deadline,Created At';
+		const header = 'Ticket #,Project,Status,Priority,SLA Deadline,Created At,Received At,Closed At';
 		const rows = filtered.map(t =>
-			[t.ticketNumber, projectName(t.projectId), t.status, t.priority, t.slaDeadline ?? '', t.createdAt].join(',')
+			[t.ticketNumber, projectName(t.projectId), t.status, t.priority, t.slaDeadline ?? '', t.createdAt, t.receivedAt ?? '', t.closedAt ?? ''].join(',')
 		);
 		const a = document.createElement('a');
 		a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent([header, ...rows].join('\n'));

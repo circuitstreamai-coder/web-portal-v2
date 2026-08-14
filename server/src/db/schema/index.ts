@@ -25,3 +25,4 @@ export * from "./inventory/inventoryLocationHistory";
 export * from "./inventory/inventoryMaintenance";
 export * from "./inventory/inventoryExternalDeployment";
 export * from "./inventory/inventoryAuditLog";
+export * from "./inventory/inventoryPurchaseOrders";

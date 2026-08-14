@@ -1,4 +1,5 @@
 import type { LayoutLoad } from './$types';
+import { portalRoleForPath } from '$lib/utils/portal-session';
 
 // Public paths — skip auth check entirely
 const PUBLIC_PATHS = new Set(['/', '/login', '/auth', '/unauthorized', '/forgot-password', '/reset-password', '/customer/register']);
@@ -14,7 +15,11 @@ export const load: LayoutLoad = async ({ fetch, url }) => {
 
 	try {
 		// Use SvelteKit's enhanced fetch so cookies are forwarded on both server and client.
-		const res = await fetch('/api/auth/me', { credentials: 'include' });
+		const role = portalRoleForPath(url.pathname);
+		const res = await fetch('/api/auth/me', {
+			credentials: 'include',
+			headers: role ? { 'X-Portal-Role': role } : {},
+		});
 		if (!res.ok) return { user: null };
 		const data = await res.json();
 		// Normalise: some APIs return { user: {...} }, others return the user directly

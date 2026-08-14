@@ -16,6 +16,10 @@ import {
   replaceItemHandler,
   getItemAuditLogHandler,
   getItemLocationHistoryHandler,
+  listPurchaseOrdersHandler,
+  createPurchaseOrderHandler,
+  updatePurchaseOrderHandler,
+  deletePurchaseOrderHandler,
 } from "./inventory.controller.js";
 
 export async function inventoryRoutes(app: FastifyInstance) {
@@ -38,6 +42,30 @@ export async function inventoryRoutes(app: FastifyInstance) {
     "/api/inventory/:id",
     { preHandler: [authenticate, onlyAssetManager] },
     updateInventoryItemHandler,
+  );
+
+  app.get(
+    "/api/inventory/purchase-orders",
+    { preHandler: [authenticate, onlyAssetManager] },
+    listPurchaseOrdersHandler,
+  );
+
+  app.post(
+    "/api/inventory/purchase-orders",
+    { preHandler: [authenticate, onlyAssetManager] },
+    createPurchaseOrderHandler,
+  );
+
+  app.patch(
+    "/api/inventory/purchase-orders/:id",
+    { preHandler: [authenticate, onlyAssetManager] },
+    updatePurchaseOrderHandler,
+  );
+
+  app.delete(
+    "/api/inventory/purchase-orders/:id",
+    { preHandler: [authenticate, onlyAssetManager] },
+    deletePurchaseOrderHandler,
   );
 
   app.post(

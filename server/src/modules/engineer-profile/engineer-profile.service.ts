@@ -1,7 +1,7 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { db } from "../../db/db.js";
-import { engineerProfiles, users } from "../../db/schema/index.js";
+import { engineerProfiles, files, users } from "../../db/schema/index.js";
 import { sendEmail, engineerWelcomeEmail, engineerProfileUpdatedEmail } from "../../services/email.js";
 
 function generatePassword(length = 10): string {
@@ -117,6 +117,38 @@ export async function updateEngineerDocumentUrls(
   id: string,
   fields: Record<string, unknown>,
 ) {
+  const documentFields = [
+    "aadhaarFrontUrl", "aadhaarBackUrl", "panCardUrl", "dlFrontUrl",
+    "dlBackUrl", "cancelChequeUrl", "profilePhotoUrl",
+  ];
+  const supplied = documentFields
+    .filter((key) => fields[key] !== undefined && fields[key] !== null)
+    .map((key) => ({ key, value: fields[key] }));
+
+  const parsed = supplied.map(({ key, value }) => {
+    const match = typeof value === "string" ? value.match(/^\/file\/(\d+)$/) : null;
+    if (!match) throw { statusCode: 400, message: `${key} is not linked to a valid uploaded file` };
+    return { key, id: Number(match[1]) };
+  });
+  const ids = parsed.map(({ id: fileId }) => fileId);
+  if (new Set(ids).size !== ids.length) {
+    throw { statusCode: 400, message: "Each document slot must contain a different file" };
+  }
+  if (ids.length > 0) {
+    const storedFiles = await db
+      .select({ id: files.id, mimeType: files.mimeType })
+      .from(files)
+      .where(and(inArray(files.id, ids), eq(files.isDeleted, false)));
+    const byId = new Map(storedFiles.map((file) => [file.id, file]));
+    for (const entry of parsed) {
+      const file = byId.get(entry.id);
+      if (!file) throw { statusCode: 400, message: `${entry.key} upload was not found or has expired` };
+      if (!(file.mimeType === "application/pdf" || file.mimeType.startsWith("image/"))) {
+        throw { statusCode: 400, message: `${entry.key} must be a PDF or image` };
+      }
+    }
+  }
+
   const [profile] = await db
     .update(engineerProfiles)
     .set({ ...fields, documentsStatus: "pending" } as any)

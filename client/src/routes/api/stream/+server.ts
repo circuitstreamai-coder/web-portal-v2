@@ -19,7 +19,7 @@ interface BackendNotification {
   createdAt: string;
 }
 
-export const GET: RequestHandler = async ({ fetch, request }) => {
+export const GET: RequestHandler = async ({ fetch, request, url }) => {
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({
@@ -47,7 +47,10 @@ export const GET: RequestHandler = async ({ fetch, request }) => {
       async function pollNotifications() {
         if (closed) return;
         try {
-          const res = await fetch('/api/notifications');
+          const portalRole = url.searchParams.get('portalRole');
+          const res = await fetch('/api/notifications', {
+            headers: portalRole ? { 'X-Portal-Role': portalRole } : {},
+          });
           if (!res.ok) return;
           const items: BackendNotification[] = await res.json();
           // Hash on id+read so we only push when something actually changed

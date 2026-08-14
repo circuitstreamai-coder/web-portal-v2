@@ -4,6 +4,7 @@
   import { Toaster } from "svelte-sonner";
   import { authStore } from "$lib/stores/auth";
   import { notifications } from "$lib/stores/notifications";
+  import { currentPortalRole } from "$lib/utils/portal-session";
 
   interface BackendNotification {
     id: string;
@@ -34,7 +35,8 @@
     let source: EventSource | null = null;
 
     function connect() {
-      source = new EventSource('/api/stream');
+      const role = currentPortalRole();
+      source = new EventSource(`/api/stream${role ? `?portalRole=${encodeURIComponent(role)}` : ""}`);
 
       source.addEventListener('notifications', (e: MessageEvent) => {
         const items: BackendNotification[] = JSON.parse(e.data);

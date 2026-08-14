@@ -43,6 +43,27 @@
       "when": 1786727549056,
       "tag": "0005_right_shadow_king",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1786740000000,
+      "tag": "0006_add_ticket_received_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1786740100000,
+      "tag": "0007_add_inventory_purchase_orders",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1786740200000,
+      "tag": "0008_backfill_customer_projects",
+      "breakpoints": true
     }
   ]
 }

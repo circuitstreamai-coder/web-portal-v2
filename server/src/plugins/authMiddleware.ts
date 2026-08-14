@@ -3,6 +3,7 @@ import type { UserRole } from "../modules/auth/auth.schema.js";
 import { and, eq } from "drizzle-orm";
 import { db } from "../db/db.js";
 import { users } from "../db/schema/index.js";
+import { roleCookieName, type JwtPayload } from "../modules/auth/auth.schema.js";
 
 /**
  * Verifies JWT from cookie and attaches decoded payload to request.user.
@@ -13,7 +14,23 @@ export async function authenticate(
   reply: FastifyReply,
 ): Promise<void> {
   try {
-    await req.jwtVerify({ onlyCookie: true });
+    const headerRole = typeof req.headers["x-portal-role"] === "string"
+      ? req.headers["x-portal-role"]
+      : undefined;
+    const queryRole = typeof (req.query as Record<string, unknown> | undefined)?.portalRole === "string"
+      ? String((req.query as Record<string, unknown>).portalRole)
+      : undefined;
+    const requestedRole = headerRole ?? queryRole;
+    if (requestedRole) {
+      const token = req.cookies[roleCookieName(requestedRole)];
+      if (!token) throw new Error("Role session not found");
+      const payload = req.server.jwt.verify<JwtPayload>(token);
+      const engineerRoleMatch = requestedRole === "engineer" && ["engineer", "l2_engineer", "l3_engineer"].includes(payload.role);
+      if (payload.role !== requestedRole && !engineerRoleMatch) throw new Error("Role session mismatch");
+      req.user = payload;
+    } else {
+      await req.jwtVerify({ onlyCookie: true });
+    }
     const [account] = await db
       .select({ status: users.status })
       .from(users)

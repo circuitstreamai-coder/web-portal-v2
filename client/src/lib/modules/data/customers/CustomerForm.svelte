@@ -129,8 +129,10 @@
     if (!contact) errors.contact = "Contact person name is required";
     else if (!/^[A-Za-z\s.\-']+$/.test(contact)) errors.contact = "Name must contain only letters";
 
-    // Primary email: if provided, valid format; also guard duplicate check result
-    if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()))
+    // A primary email is required because every customer receives portal access.
+    if (!form.email.trim())
+      errors.email = "Email address is required";
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()))
       errors.email = "Enter a valid email address";
     else if (emailCheckStatus === "taken")
       errors.email = "Email is already in use";
@@ -296,7 +298,7 @@
       <!-- Row: Email + Phone -->
       <div class="grid grid-cols-2 gap-4">
         <label class={labelClass}>
-          <span class={labelTextClass}>Email</span>
+          <span class={labelTextClass}>Email <span class="text-red-400">*</span></span>
           <div class="relative">
             <input
               type="email"
@@ -305,6 +307,7 @@
                 ? 'border-red-400 focus:border-red-400 focus:ring-red-400/10'
                 : emailCheckStatus === 'ok' ? 'border-green-400' : ''}"
               bind:value={form.email}
+              required
               disabled={saving}
               onblur={() => checkEmail("primary")}
               oninput={() => { emailCheckStatus = "idle"; delete errors.email; }}

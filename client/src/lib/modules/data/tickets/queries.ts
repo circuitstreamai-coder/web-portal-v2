@@ -21,6 +21,8 @@ export interface Ticket {
   replacementStatus?: 'pending' | 'approved' | 'dispatched' | 'replaced' | 'rejected' | null;
   payoutAmount: number;
   slaDeadline: string;
+  receivedAt: string | null;
+  closedAt: string | null;
   author: string;
   createdAt: string;
 }
@@ -67,7 +69,7 @@ const FETCH_TICKETS = `
       id ticketNumber projectId categoryId title description
       priority status state city pincode address
       assignedEngineerId statePlannerId escalationLevel
-      payoutAmount slaDeadline author createdAt
+      payoutAmount slaDeadline receivedAt closedAt author createdAt
     }
   }
 `;

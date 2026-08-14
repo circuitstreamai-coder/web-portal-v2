@@ -48,6 +48,10 @@ export interface ResetPasswordBody {
 
 export const COOKIE_NAME = "token";
 
+export function roleCookieName(role: string) {
+  return `${COOKIE_NAME}_${role.replace(/[^a-z0-9_]/gi, "")}`;
+}
+
 export const COOKIE_OPTIONS = {
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",

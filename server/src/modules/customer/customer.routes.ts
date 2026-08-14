@@ -12,6 +12,7 @@ import {
   listCustomersHandler,
   updateCustomerHandler,
   updateCustomerStatusHandler,
+  provisionCustomerAccessHandler,
 } from "./customer.controller.js";
 
 export async function customerRoutes(app: FastifyInstance) {
@@ -23,6 +24,12 @@ export async function customerRoutes(app: FastifyInstance) {
     "/api/customers/:id/approve",
     { preHandler: [authenticate, authorize(["super_admin", "national_head"])] },
     approveCustomerHandler,
+  );
+
+  app.post(
+    "/api/customers/:id/provision-access",
+    { preHandler: [authenticate, onlySuperAdmin] },
+    provisionCustomerAccessHandler,
   );
 
   app.patch(

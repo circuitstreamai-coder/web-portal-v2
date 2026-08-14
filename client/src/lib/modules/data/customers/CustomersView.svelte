@@ -11,6 +11,7 @@
     approveCustomer,
     rejectCustomer,
     deleteCustomer,
+    provisionCustomerAccess,
   } from "./actions";
   import { toast } from "svelte-sonner";
   import ConfirmModal from "$lib/components/ConfirmModal.svelte";
@@ -257,6 +258,25 @@
             c.id === updated.id ? { ...c, ...updated } : c,
           );
           toast.success(`${customer.companyName} approved — credentials sent`);
+        } finally {
+          actionLoadingId = null;
+        }
+      },
+    };
+  }
+
+  function promptProvisionAccess(customer: Customer) {
+    confirmModal = {
+      title: "Create Customer Portal Access",
+      message: `Create login access for ${customer.companyName}? Temporary credentials will be sent to ${customer.email}.`,
+      confirmLabel: "Create Access",
+      confirmClass: "bg-[#0B182A] text-white hover:opacity-90",
+      action: async () => {
+        actionLoadingId = customer.id;
+        try {
+          const updated = await provisionCustomerAccess(customer.id);
+          customers = customers.map((item) => item.id === updated.id ? { ...item, ...updated } : item);
+          toast.success(`${customer.companyName} portal access created`);
         } finally {
           actionLoadingId = null;
         }
@@ -837,6 +857,15 @@
                         >
                       {/if}
                       {#if canChangeAccountStatus && c.status === "active"}
+                        {#if !c.userId}
+                          <button
+                            aria-label="Create customer portal access"
+                            onclick={() => promptProvisionAccess(c)}
+                            disabled={isActioning || !c.email}
+                            title={c.email ? "Create login and send credentials" : "Add an email first"}
+                            class="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 transition-all disabled:opacity-50"
+                          >Create Access</button>
+                        {/if}
                         <button
                           aria-label="Deactivate customer"
                           onclick={() => promptDeactivate(c)}

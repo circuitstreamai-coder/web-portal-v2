@@ -24,6 +24,7 @@ export const typeDefs = `
     escalationLevel: String
     payoutAmount: Int
     slaDeadline: String
+    receivedAt: String
     closedAt: String
     author: String
     createdAt: String
@@ -68,6 +69,7 @@ export const resolvers = {
         statePlannerId: r.assignedStatePlannerId,
         createdAt: r.createdAt?.toISOString() ?? null,
         slaDeadline: r.slaDeadline?.toISOString() ?? null,
+        receivedAt: r.receivedAt?.toISOString() ?? null,
         closedAt: r.closedAt?.toISOString() ?? null,
       }));
     },
@@ -84,6 +86,7 @@ export const resolvers = {
         statePlannerId: ticket.assignedStatePlannerId,
         createdAt: ticket.createdAt?.toISOString() ?? null,
         slaDeadline: ticket.slaDeadline?.toISOString() ?? null,
+        receivedAt: ticket.receivedAt?.toISOString() ?? null,
         closedAt: ticket.closedAt?.toISOString() ?? null,
       };
     },

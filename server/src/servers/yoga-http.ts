@@ -6,7 +6,6 @@ import { schema } from "../graphql/index.js";
 import { uploadFile, getFile, canAccessFile } from "../modules/files/file.service.js";
 import { jwtPlugin } from "../plugins/jwt.js";
 import { authenticate } from "../plugins/authMiddleware.js";
-import { listPayoutRates } from "../modules/ticket/ticket-category.service.js";
 import { adminRoutes } from "../modules/admin/admin.routes.js";
 import { authRoutes } from "../modules/auth/auth.routes.js";
 import { customerRoutes } from "../modules/customer/customer.routes.js";
@@ -21,7 +20,7 @@ import { notificationRoutes } from "../modules/notifications/notification.routes
 import { otpRoutes } from "../modules/otp/otp.routes.js";
 import { checkEmailRoutes } from "../modules/check-email/check-email.routes.js";
 import { seedUsers } from "../db/seed.js";
-import { COOKIE_NAME } from "../modules/auth/auth.schema.js";
+import { COOKIE_NAME, roleCookieName } from "../modules/auth/auth.schema.js";
 import type { JwtPayload } from "../modules/auth/auth.schema.js";
 import { pool } from "../db/index.js";
 import { isEmailConfigured } from "../services/email.js";
@@ -36,7 +35,7 @@ export async function createServer() {
       : "http://localhost:5173",
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type"],
+    allowedHeaders: ["Content-Type", "X-Portal-Role"],
   });
 
   await app.register(jwtPlugin);
@@ -66,14 +65,6 @@ export async function createServer() {
   await app.register(notificationRoutes);
   await app.register(otpRoutes);
   await app.register(checkEmailRoutes);
-  app.get("/api/payout-rates", { preHandler: [authenticate] }, async (_req, reply) => {
-    try {
-      return reply.send(await listPayoutRates());
-    } catch (err: any) {
-      return reply.status(err.statusCode ?? 500).send({ error: err.message });
-    }
-  });
-
   app.get("/health", async () => {
     return {
       ok: true,
@@ -166,9 +157,12 @@ export async function createServer() {
       try {
         const cookieHeader = yogaCtx.request.headers.get("cookie");
         if (cookieHeader) {
-          const token = parseCookieToken(cookieHeader, COOKIE_NAME);
+          const requestedRole = yogaCtx.request.headers.get("x-portal-role");
+          const token = parseCookieToken(cookieHeader, requestedRole ? roleCookieName(requestedRole) : COOKIE_NAME);
           if (token) {
             user = app.jwt.verify<JwtPayload>(token);
+            const engineerRoleMatch = requestedRole === "engineer" && ["engineer", "l2_engineer", "l3_engineer"].includes(user.role);
+            if (requestedRole && user.role !== requestedRole && !engineerRoleMatch) user = null;
           }
         }
       } catch {

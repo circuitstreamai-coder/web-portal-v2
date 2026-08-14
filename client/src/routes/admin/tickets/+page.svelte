@@ -166,9 +166,14 @@
     return projects.find((p) => p.id === id)?.name ?? "—";
   }
 
+  function engineerProfile(id: string): EngineerProfile | undefined {
+    if (!id) return undefined;
+    return engineers.find((eng) => eng.userId === id || eng.id === id);
+  }
+
   function engineerName(id: string): string {
     if (!id) return "—";
-    const e = engineers.find((eng) => eng.userId === id || eng.id === id);
+    const e = engineerProfile(id);
     return e?.userName ?? e?.userEmail ?? id;
   }
 
@@ -650,7 +655,15 @@
                 <td
                   class="py-3 px-3 text-[13px] text-gray-600 whitespace-nowrap"
                 >
-                  {engineerName(t.assignedEngineerId)}
+                  <div class="flex flex-col gap-0.5">
+                    <span class="font-medium text-gray-700">{engineerName(t.assignedEngineerId)}</span>
+                    {#if engineerProfile(t.assignedEngineerId)?.userPhone}
+                      <a class="text-[11px] text-gray-400 hover:text-[#E87D1F]" href={`tel:${engineerProfile(t.assignedEngineerId)?.userPhone}`}>{engineerProfile(t.assignedEngineerId)?.userPhone}</a>
+                    {/if}
+                    {#if engineerProfile(t.assignedEngineerId)?.userEmail}
+                      <a class="text-[11px] text-gray-400 hover:text-[#E87D1F]" href={`mailto:${engineerProfile(t.assignedEngineerId)?.userEmail}`}>{engineerProfile(t.assignedEngineerId)?.userEmail}</a>
+                    {/if}
+                  </div>
                 </td>
                 <td class="py-3 px-3">
                   {#if t.escalationLevel}
@@ -944,6 +957,20 @@
         <DetailRow label="Engineer"
           >{engineerName(vt.assignedEngineerId)}</DetailRow
         >
+        {#if engineerProfile(vt.assignedEngineerId)?.userPhone}
+          <DetailRow label="Engineer Phone">
+            <a class="text-[#E87D1F]" href={`tel:${engineerProfile(vt.assignedEngineerId)?.userPhone}`}>
+              {engineerProfile(vt.assignedEngineerId)?.userPhone}
+            </a>
+          </DetailRow>
+        {/if}
+        {#if engineerProfile(vt.assignedEngineerId)?.userEmail}
+          <DetailRow label="Engineer Email">
+            <a class="text-[#E87D1F]" href={`mailto:${engineerProfile(vt.assignedEngineerId)?.userEmail}`}>
+              {engineerProfile(vt.assignedEngineerId)?.userEmail}
+            </a>
+          </DetailRow>
+        {/if}
         <DetailRow label="State Planner"
           >{plannerName(vt.statePlannerId)}</DetailRow
         >

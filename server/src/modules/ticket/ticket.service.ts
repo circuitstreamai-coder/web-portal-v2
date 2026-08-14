@@ -317,6 +317,7 @@ export async function listTickets(role: string, userId: string) {
         escalationLevel: tickets.escalationLevel,
         payoutAmount: tickets.payoutAmount,
         slaDeadline: tickets.slaDeadline,
+        receivedAt: tickets.receivedAt,
         closedAt: tickets.closedAt,
         author: tickets.author,
         createdAt: tickets.createdAt,
@@ -349,7 +350,24 @@ export async function listTickets(role: string, userId: string) {
       .then((rows) => rows.map(({ tickets }) => tickets));
   }
 
-  if (["noc", "state_planner", "national_head"].includes(role)) {
+  if (role === "noc") {
+    const [scope] = await db
+      .select({ state: userRoles.state })
+      .from(userRoles)
+      .innerJoin(roles, eq(roles.id, userRoles.roleId))
+      .where(and(
+        eq(userRoles.userId, userId),
+        eq(userRoles.deleted, false),
+        eq(roles.name, "noc"),
+      ))
+      .limit(1);
+    if (scope?.state) {
+      return db.select().from(tickets).where(and(eq(tickets.state, scope.state), eq(tickets.deleted, false)));
+    }
+    return db.select().from(tickets).where(eq(tickets.deleted, false));
+  }
+
+  if (["state_planner", "national_head"].includes(role)) {
     return db.select().from(tickets).where(eq(tickets.deleted, false));
   }
 
@@ -615,6 +633,7 @@ export async function updateTicketStatus(
 
   // 5. Execute update + history atomically
   const updates: Record<string, unknown> = { status: requestedStatus };
+  if (requestedStatus === "accepted" && !current.receivedAt) updates.receivedAt = new Date();
   if (requestedStatus === "closed") updates.closedAt = new Date();
 
   const ticket = await db.transaction(async (tx) => {

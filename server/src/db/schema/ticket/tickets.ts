@@ -34,6 +34,7 @@ export const tickets = ticketSchema.table("tickets", {
   replacementStatus: text("replacement_status"),
   payoutAmount: integer("payout_amount"),
   slaDeadline: timestamp("sla_deadline"),
+  receivedAt: timestamp("received_at"),
   closedAt: timestamp("closed_at"),
   author: text("author"),
   source: text("source"),

@@ -1745,7 +1745,7 @@
             <div
               class="px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 text-[13px] text-amber-700"
             >
-              No projects found for this customer
+              No projects are mapped to {customers.find((customer) => customer.id === form.customerId)?.companyName ?? "this customer"}. Ask the Super Admin to create or map a project first.
             </div>
           {:else if formProjects.length === 1}
             <div

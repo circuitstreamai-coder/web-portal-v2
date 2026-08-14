@@ -1,3 +1,5 @@
+import { portalRoleHeaders } from "$lib/utils/portal-session";
+
 interface GqlResponse<T> {
   data: T;
   errors?: Array<{ message: string }>;
@@ -10,7 +12,7 @@ export async function gqlRequest<T>(
   const res = await fetch("/graphql", {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: portalRoleHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ query, variables }),
   });
 

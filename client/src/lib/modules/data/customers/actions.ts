@@ -74,6 +74,12 @@ export async function approveCustomer(id: string): Promise<Customer> {
   return result;
 }
 
+export async function provisionCustomerAccess(id: string): Promise<Customer> {
+  const result = await restRequest<Customer>(`/api/customers/${id}/provision-access`, { method: 'POST' });
+  invalidate('customers');
+  return result;
+}
+
 export async function rejectCustomer(id: string): Promise<Customer> {
   const result = await restRequest<Customer>(`/api/customers/${id}/reject`, {
     method: 'PATCH',

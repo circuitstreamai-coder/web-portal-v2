@@ -60,6 +60,7 @@
   let editData = $state<InventoryItem | null>(null);
   let saving = $state(false);
   let stockItem = $state<InventoryItem | null>(null);
+  let locationItem = $state<InventoryItem | null>(null);
 
   function openAdd() {
     formMode = "add";
@@ -71,6 +72,29 @@
     formMode = "edit";
     editData = { ...item };
     showForm = true;
+  }
+
+  function exportCSV() {
+    const escape = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+    const header = ["Name", "Type", "SKU", "Status", "Quantity", "Owner", "Location", "Serial Number", "Expiry"];
+    const rows = filteredItems().map((item) => [
+      item.name,
+      TYPE_LABEL[item.assetType] ?? item.assetType,
+      item.sku,
+      STATUS_LABEL[item.status] ?? item.status,
+      item.quantity,
+      item.ownershipType === "customer" ? "Customer" : "Innoserve",
+      item.location,
+      item.serialNumber,
+      item.expiryDate ?? item.warrantyExpiry,
+    ].map(escape).join(","));
+    const blob = new Blob([[header.map(escape).join(","), ...rows].join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "inventory.csv";
+    anchor.click();
+    URL.revokeObjectURL(url);
   }
 
   async function handleSave(form: Record<string, unknown>) {
@@ -217,7 +241,7 @@
           <span class="text-[12px] text-gray-500 bg-gray-100 px-3 py-1 rounded-full">{filteredItems().length} Total</span>
         {/if}
       </div>
-      <button class="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-lg text-[13px] text-gray-600 bg-white cursor-pointer hover:border-[#0B182A] transition-colors duration-150">
+      <button onclick={exportCSV} class="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-lg text-[13px] text-gray-600 bg-white cursor-pointer hover:border-[#0B182A] transition-colors duration-150">
         <Icons.Download size={14} />
         Export
       </button>
@@ -253,7 +277,18 @@
                 <td class="py-3 px-3 text-[13px] text-gray-500">
                   {item.ownershipType === "customer" ? "Customer" : "Innoserve"}
                 </td>
-                <td class="py-3 px-3 text-[13px] text-gray-600 max-w-30 truncate" title={item.location ?? ""}>{item.location ?? "—"}</td>
+                <td class="py-3 px-3 text-[13px] text-gray-600 max-w-30">
+                  {#if item.location}
+                    <button
+                      type="button"
+                      onclick={() => (locationItem = item)}
+                      class="max-w-30 truncate text-left text-[#0B5EA8] hover:text-[#E87D1F] hover:underline cursor-pointer"
+                      title="View complete location"
+                    >{item.location}</button>
+                  {:else}
+                    —
+                  {/if}
+                </td>
                 <td class="py-3 px-3 text-[13px]">
                   {#if expiry}
                     <span class="{isExpired(expiry) ? 'text-red-600 font-semibold' : isExpiringSoon(expiry) ? 'text-yellow-600 font-semibold' : 'text-gray-500'}">
@@ -324,4 +359,34 @@
     item={stockItem}
     onClose={() => (stockItem = null)}
   />
+{/if}
+
+{#if locationItem}
+  <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <button type="button" class="absolute inset-0 bg-black/50" aria-label="Close location" onclick={() => (locationItem = null)}></button>
+    <div class="relative z-10 w-full max-w-lg rounded-2xl bg-white shadow-2xl" role="dialog" aria-modal="true" aria-label="Inventory location details" tabindex="-1">
+      <header class="flex items-start justify-between border-b border-gray-100 px-6 py-4">
+        <div>
+          <p class="text-[11px] font-semibold uppercase tracking-wide text-[#E87D1F]">Inventory Location</p>
+          <h2 class="mt-1 text-[17px] font-semibold text-[#0B182A]">{locationItem.name}</h2>
+        </div>
+        <button type="button" class="text-gray-400 hover:text-gray-700" aria-label="Close" onclick={() => (locationItem = null)}>✕</button>
+      </header>
+      <div class="space-y-4 px-6 py-5">
+        <div>
+          <p class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Complete address / location</p>
+          <p class="mt-1 whitespace-pre-wrap text-[14px] leading-6 text-gray-800">{locationItem.location}</p>
+        </div>
+        <div class="grid grid-cols-2 gap-4 rounded-xl bg-gray-50 p-4 text-[13px]">
+          <div><span class="block text-gray-400">SKU</span><span class="font-medium text-gray-700">{locationItem.sku ?? "—"}</span></div>
+          <div><span class="block text-gray-400">Serial number</span><span class="font-medium text-gray-700">{locationItem.serialNumber ?? "—"}</span></div>
+          <div><span class="block text-gray-400">Owner</span><span class="font-medium text-gray-700">{locationItem.ownershipType === "customer" ? "Customer" : "Innoserve"}</span></div>
+          <div><span class="block text-gray-400">Available quantity</span><span class="font-medium text-gray-700">{locationItem.quantity}</span></div>
+        </div>
+      </div>
+      <footer class="flex justify-end border-t border-gray-100 px-6 py-4">
+        <button type="button" onclick={() => (locationItem = null)} class="rounded-lg bg-[#0B182A] px-5 py-2.5 text-[13px] font-semibold text-white">Close</button>
+      </footer>
+    </div>
+  </div>
 {/if}

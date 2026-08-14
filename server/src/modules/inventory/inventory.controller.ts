@@ -27,6 +27,13 @@ import type {
   ReturnExternalDeploymentBody,
   ReplaceItemBody,
 } from "./inventory.schema.js";
+import {
+  createPurchaseOrder,
+  deletePurchaseOrder,
+  listPurchaseOrders,
+  updatePurchaseOrder,
+  type PurchaseOrderInput,
+} from "./purchase-order.service.js";
 
 function send(reply: FastifyReply, fn: () => Promise<unknown>) {
   return fn()
@@ -72,6 +79,28 @@ export async function listTicketItemsHandler(req: FastifyRequest, reply: Fastify
     const { id } = req.params as { id: string };
     return listTicketItems(id);
   });
+}
+
+export async function listPurchaseOrdersHandler(_req: FastifyRequest, reply: FastifyReply) {
+  return send(reply, listPurchaseOrders);
+}
+
+export async function createPurchaseOrderHandler(req: FastifyRequest, reply: FastifyReply) {
+  return send(reply, async () => {
+    const order = await createPurchaseOrder(req.body as PurchaseOrderInput, req.user.id);
+    reply.code(201);
+    return order;
+  });
+}
+
+export async function updatePurchaseOrderHandler(req: FastifyRequest, reply: FastifyReply) {
+  const { id } = req.params as { id: string };
+  return send(reply, () => updatePurchaseOrder(id, req.body as PurchaseOrderInput));
+}
+
+export async function deletePurchaseOrderHandler(req: FastifyRequest, reply: FastifyReply) {
+  const { id } = req.params as { id: string };
+  return send(reply, () => deletePurchaseOrder(id));
 }
 
 // ── Maintenance ───────────────────────────────────────────────────────────────

@@ -58,6 +58,7 @@
       { label: "Projects",    href: "/admin/projects",           icon: "folder"  },
       { label: "Tickets",     href: "/admin/tickets",            icon: "ticket"  },
       { label: "Inventory",   href: "/admin/inventory",          icon: "cube"    },
+      { label: "PO Tracking", href: "/admin/inventory/po",       icon: "folder"  },
       { label: "SLA",         href: "/admin/sla",                icon: "shield"  },
       { label: "Call Types",  href: "/admin/categories",         icon: "tag"     },
       { label: "Roles",       href: "/admin/roles",              icon: "key"     },

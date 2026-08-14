@@ -413,12 +413,16 @@
                             Ready
                           </span>
                         {:else}
-                          <span
-                            class="text-red-500 font-semibold cursor-help"
-                            title={row.errors.join("\n")}
-                          >
-                            {row.errors.length} error{row.errors.length > 1 ? "s" : ""}
-                          </span>
+                          <div class="text-red-600">
+                            <span class="font-semibold">
+                              {row.errors.length} error{row.errors.length > 1 ? "s" : ""}
+                            </span>
+                            <ul class="mt-1 list-disc list-inside text-[11px] leading-4 min-w-48">
+                              {#each row.errors as error}
+                                <li>{error}</li>
+                              {/each}
+                            </ul>
+                          </div>
                         {/if}
                       </td>
                     </tr>
@@ -432,7 +436,7 @@
             <div class="bg-amber-50 border border-amber-100 rounded-xl p-3">
               <p class="text-[12px] font-semibold text-amber-700">
                 {invalidRows.length} row{invalidRows.length > 1 ? "s" : ""} with errors will be skipped.
-                Hover the error count to see details.
+                Review the reasons shown beside each row before uploading.
               </p>
             </div>
           {/if}

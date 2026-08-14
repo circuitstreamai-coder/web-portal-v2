@@ -298,6 +298,36 @@ export function customerWelcomeEmail(
   };
 }
 
+export function staffWelcomeEmail(
+  name: string,
+  email: string,
+  password: string,
+  roleLabel: string,
+  scope?: string,
+) {
+  return {
+    to: email,
+    subject: `Your Innoserve ${roleLabel} Account`,
+    html: emailLayout({
+      title: "Your staff account is ready",
+      preview: `You can now access Innoserve as ${roleLabel}.`,
+      icon: "&#10003;",
+      tone: "success",
+      body:
+        greeting(name) +
+        paragraph(`Your ${escapeHtml(roleLabel)} account has been created.`) +
+        detailsTable([
+          ["Role", roleLabel],
+          ...(scope ? [["Assigned scope", scope] as [string, string]] : []),
+          ["Email", email],
+          ["Temporary password", password],
+        ]),
+      action: { label: "Sign in to Innoserve", url: frontendUrl("/auth") },
+      notice: "For your security, change this temporary password immediately after signing in.",
+    }),
+  };
+}
+
 export function superAdminCustomerNotification(
   customerName: string,
   companyName: string,

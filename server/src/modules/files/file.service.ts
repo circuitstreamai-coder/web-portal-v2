@@ -3,7 +3,7 @@ import { extname } from "path";
 import { db } from "../../db/db.js";
 import { files, fileChunks, attachments, tickets, users } from "../../db/schema/index.js";
 
-const STAFF_ROLES = ["super_admin", "noc", "state_planner", "project_head"];
+const STAFF_ROLES = ["super_admin", "noc", "state_planner", "project_head", "asset_manager"];
 
 /**
  * Returns true when the requesting user may access the file.
