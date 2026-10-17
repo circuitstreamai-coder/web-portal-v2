@@ -12,6 +12,14 @@ site_url = "http://localhost:5173"
 additional_redirect_urls = ["http://localhost:5173/reset-password"]
 enable_signup = false
 
+[auth.email.template.invite]
+subject = "Activate your Innoserve Portal account"
+content_path = "./supabase/templates/invite.html"
+
+[auth.email.template.recovery]
+subject = "Reset your Innoserve Portal password"
+content_path = "./supabase/templates/recovery.html"
+
 [storage]
 enabled = true
 file_size_limit = "25MiB"
