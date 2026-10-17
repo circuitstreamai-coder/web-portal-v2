@@ -59,6 +59,11 @@ export function edgePath(request: Request, functionName: string): string {
   const marker = `/functions/v1/${functionName}`;
   const markerIndex = pathname.indexOf(marker);
   if (markerIndex >= 0) return pathname.slice(markerIndex + marker.length) || "/";
+  // The hosted runtime strips /functions/v1 and passes /<function-name>/...
+  const prefix = `/${functionName}`;
+  if (pathname === prefix || pathname.startsWith(`${prefix}/`)) {
+    return pathname.slice(prefix.length) || "/";
+  }
   return pathname;
 }
 
