@@ -28,6 +28,7 @@
 		"vite": "^7.3.1"
 	},
 	"dependencies": {
+		"@supabase/supabase-js": "^2.118.0",
 		"mode-watcher": "^1.1.0",
 		"nodemailer": "^8.0.3",
 		"svelte-sonner": "^1.1.0",

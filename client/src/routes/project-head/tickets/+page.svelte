@@ -3,7 +3,7 @@
   import * as Icons from '$lib/icons';
   import { toast } from 'svelte-sonner';
   import { authStore } from '$lib/stores/auth';
-  import { fileUrl } from '$lib/api/upload';
+  import { openFile } from '$lib/api/upload';
   import { checkClosureEligibility, type ClosureEligibility } from '$lib/api/ticket-closure';
   import { TICKET_STATUS_LABELS } from '$lib/config/roles';
   import {
@@ -166,11 +166,10 @@
     await Promise.all(ids.map((id) => loadClosureEligibility(id)));
   }
 
-  function attachmentHref(filePath: string): string {
-    if (!filePath) return '#';
-    if (filePath.startsWith('/file/')) return filePath;
-    if (filePath.startsWith('http://') || filePath.startsWith('https://')) return filePath;
-    return fileUrl(filePath);
+  async function openAttachment(filePath: string): Promise<void> {
+    if (!filePath) return;
+    if (filePath.includes('/file/')) await openFile(filePath);
+    else window.open(filePath, '_blank', 'noopener,noreferrer');
   }
 
   async function openValidation(ticket: Ticket) {
@@ -393,10 +392,9 @@
               {:else}
                 <div class="flex flex-col gap-2">
                   {#each irAttachments as attachment}
-                    <a
-                      href={attachmentHref(attachment.fileUrl)}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      type="button"
+                      onclick={() => openAttachment(attachment.fileUrl).catch((err) => toast.error(err.message))}
                       class="flex items-center justify-between px-3 py-2 border border-gray-200 rounded-lg text-[13px] text-[#0B182A] hover:bg-gray-50"
                     >
                       <span class="flex items-center gap-2">
@@ -404,7 +402,7 @@
                         IR Document
                       </span>
                       <Icons.Eye size={14} />
-                    </a>
+                    </button>
                   {/each}
                 </div>
               {/if}
@@ -420,15 +418,14 @@
               {:else}
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {#each siteImages as image, index}
-                    <a
-                      href={attachmentHref(image.fileUrl)}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      type="button"
+                      onclick={() => openAttachment(image.fileUrl).catch((err) => toast.error(err.message))}
                       class="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg text-[13px] text-[#0B182A] hover:bg-gray-50"
                     >
                       <Icons.Eye size={14} />
                       Site Image {index + 1}
-                    </a>
+                    </button>
                   {/each}
                 </div>
               {/if}

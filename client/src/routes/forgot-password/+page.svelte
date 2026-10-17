@@ -1,5 +1,6 @@
 <script lang="ts">
   import { restRequest } from '$lib/api/rest';
+  import { getSupabaseClient, isSupabaseConfigured } from '$lib/supabase/client';
   import Logo from '$lib/ui/Logo.svelte';
 
   // ── State ─────────────────────────────────────────────────────────────────
@@ -28,10 +29,18 @@
     if (!validate()) return;
     loading = true;
     try {
-      await restRequest('/api/auth/forgot-password', {
-        method: 'POST',
-        body: JSON.stringify({ email: email.trim().toLowerCase() }),
-      });
+      const normalizedEmail = email.trim().toLowerCase();
+      if (isSupabaseConfigured()) {
+        const { error } = await getSupabaseClient().auth.resetPasswordForEmail(normalizedEmail, {
+          redirectTo: `${window.location.origin}/reset-password`,
+        });
+        if (error) throw error;
+      } else {
+        await restRequest('/api/auth/forgot-password', {
+          method: 'POST',
+          body: JSON.stringify({ email: normalizedEmail }),
+        });
+      }
     } catch {
       // Always show success regardless of response to prevent email enumeration
     } finally {

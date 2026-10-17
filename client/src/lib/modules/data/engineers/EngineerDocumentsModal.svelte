@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { EngineerProfile } from "./queries";
-  import { fileUrl } from "$lib/api/upload";
+  import { onMount } from "svelte";
+  import { resolveFileUrl } from "$lib/api/upload";
 
   interface Props {
     eng: EngineerProfile;
@@ -14,21 +15,23 @@
   // Stored URLs are absolute (http://host/file/123). Extract the ID and
   // rebuild as a relative URL so requests go through the Vite proxy in dev
   // and a reverse proxy in production.
-  function toRelativeFileUrl(stored: string | null): string | null {
-    if (!stored) return null;
-    const match = stored.match(/\/file\/(\d+)$/);
-    return match ? fileUrl(match[1]) : stored;
-  }
+  let docs = $state<Array<{ label: string; url: string | null }>>([]);
 
-  let docs = $derived([
-    { label: "Profile Photo",       url: toRelativeFileUrl(eng.profilePhotoUrl) },
-    { label: "Aadhaar Card (Front)",url: toRelativeFileUrl(eng.aadhaarFrontUrl) },
-    { label: "Aadhaar Card (Back)", url: toRelativeFileUrl(eng.aadhaarBackUrl) },
-    { label: "PAN Card",            url: toRelativeFileUrl(eng.panCardUrl) },
-    { label: "Driving Licence (Front)", url: toRelativeFileUrl(eng.dlFrontUrl) },
-    { label: "Driving Licence (Back)",  url: toRelativeFileUrl(eng.dlBackUrl) },
-    { label: "Cancel Cheque",       url: toRelativeFileUrl(eng.cancelChequeUrl) },
-  ]);
+  onMount(async () => {
+    const sources = [
+      ["Profile Photo", eng.profilePhotoUrl],
+      ["Aadhaar Card (Front)", eng.aadhaarFrontUrl],
+      ["Aadhaar Card (Back)", eng.aadhaarBackUrl],
+      ["PAN Card", eng.panCardUrl],
+      ["Driving Licence (Front)", eng.dlFrontUrl],
+      ["Driving Licence (Back)", eng.dlBackUrl],
+      ["Cancel Cheque", eng.cancelChequeUrl],
+    ] as const;
+    docs = await Promise.all(sources.map(async ([label, value]) => ({
+      label,
+      url: value ? await resolveFileUrl(value).catch(() => null) : null,
+    })));
+  });
 </script>
 
 <!-- Backdrop -->

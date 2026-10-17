@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { restRequest } from "$lib/api/rest";
   let {
     onVerified,
     flow,
@@ -41,13 +42,10 @@
     error = "";
     isSending = true;
     try {
-      const res = await fetch("/api/otp/send", {
+      await restRequest("/api/otp/send", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, flow }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.message ?? "Failed to send OTP.");
       otpSent = true;
       startCooldown();
     } catch (err: unknown) {
@@ -62,13 +60,10 @@
     error = "";
     isVerifying = true;
     try {
-      const res = await fetch("/api/otp/verify", {
+      const data = await restRequest<{ verificationToken?: string }>("/api/otp/verify", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, otp }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.message ?? "Invalid OTP.");
       if (!data?.verificationToken) throw new Error("Verification proof was not returned.");
       onVerified(email, data.verificationToken);
     } catch {

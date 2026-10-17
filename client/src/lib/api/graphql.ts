@@ -1,4 +1,9 @@
 import { portalRoleHeaders } from "$lib/utils/portal-session";
+import {
+  isSupabaseConfigured,
+  supabaseAuthHeaders,
+  supabaseFunctionUrl,
+} from "$lib/supabase/client";
 
 interface GqlResponse<T> {
   data: T;
@@ -9,10 +14,17 @@ export async function gqlRequest<T>(
   query: string,
   variables?: Record<string, unknown>,
 ): Promise<T> {
-  const res = await fetch("/graphql", {
+  let headers: HeadersInit = portalRoleHeaders({ "Content-Type": "application/json" });
+  let endpoint = "/graphql";
+  if (isSupabaseConfigured()) {
+    headers = await supabaseAuthHeaders(headers);
+    endpoint = supabaseFunctionUrl("graphql");
+  }
+
+  const res = await fetch(endpoint, {
     method: "POST",
     credentials: "include",
-    headers: portalRoleHeaders({ "Content-Type": "application/json" }),
+    headers,
     body: JSON.stringify({ query, variables }),
   });
 

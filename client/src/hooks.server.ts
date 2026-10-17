@@ -7,10 +7,10 @@ function getApiBase() {
   if (configuredBase) return configuredBase.replace(/\/$/, '');
   if (dev) return 'http://localhost:4000';
 
-  throw new Error('PRIVATE_API_BASE_URL is required in production');
+  return null;
 }
 
-// Routes handled by SvelteKit itself — must not be forwarded to Railway.
+// Routes handled by SvelteKit itself — must not be forwarded to the legacy API.
 const INTERNAL_API_PREFIXES = [
   '/api/stream',     // SSE real-time stream
   '/api/paginated/', // Server-side paginated data endpoints
@@ -29,7 +29,11 @@ export const handle: Handle = async ({ event, resolve }) => {
   const { pathname, search } = event.url;
 
   if (shouldProxy(pathname)) {
-    const target = `${getApiBase()}${pathname}${search}`;
+    const apiBase = getApiBase();
+    // Supabase mode calls Edge Functions directly from the browser. With no
+    // legacy base configured, let SvelteKit handle (or 404) these paths.
+    if (!apiBase) return resolve(event);
+    const target = `${apiBase}${pathname}${search}`;
 
     const proxyHeaders = new Headers(event.request.headers);
     proxyHeaders.delete('host');

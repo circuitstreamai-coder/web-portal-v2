@@ -3,6 +3,7 @@
   import { toast } from 'svelte-sonner';
   import { fetchPayouts, type PayoutRecord } from '$lib/api/payouts';
   import Pagination from '$lib/components/Pagination.svelte';
+  import { apiFetch } from '$lib/api/rest';
 
   // ── Filter state ──────────────────────────────────────────────────────────
 
@@ -42,13 +43,13 @@
   async function handleExport() {
     exporting = true;
     try {
-      const res = await fetch('/api/payouts/export', { credentials: 'include' });
+      const res = await apiFetch('/api/payouts/export');
       if (!res.ok) throw new Error(await res.text() || 'Export failed');
       const blob = await res.blob();
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement('a');
       a.href     = url;
-      a.download = 'payouts.xlsx';
+      a.download = 'payouts.csv';
       document.body.appendChild(a);
       a.click();
       a.remove();

@@ -1,5 +1,10 @@
 # Innoserve Techsol — Web Portal v2 Documentation
 
+> **Backend migration notice:** the deployment architecture is now Supabase
+> Auth, PostgreSQL, Storage, and Edge Functions. Backend sections below describe
+> the retained Fastify rollback implementation. See [SUPABASE_MIGRATION.md](SUPABASE_MIGRATION.md)
+> and [PRODUCTION_CHECKLIST.md](PRODUCTION_CHECKLIST.md) for the current setup.
+
 > Last updated: 2026-05-24  
 > Status: Clean build — 0 TypeScript errors, 0 Svelte warnings
 

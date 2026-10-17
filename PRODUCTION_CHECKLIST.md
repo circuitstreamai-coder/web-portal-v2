@@ -1,123 +1,130 @@
-# Client demo and production launch checklist
+# Supabase production launch checklist
 
-The supported production layout is:
+The supported production layout is now:
 
-- Frontend: Vercel, with the Root Directory set to `client`
-- API: Railway, with the Root Directory set to `server`
-- Database: PostgreSQL attached to the Railway API service
-- Transactional email: Resend over HTTPS, with no demo-only OTP bypass
+- Frontend: Vercel, rooted at `client`
+- Auth, PostgreSQL, private file storage, and APIs: Supabase
+- Server workflows: Supabase Edge Functions in `supabase/functions`
+- Transactional email: Resend, called only from Edge Functions
 
-## Phase A: client demo without Innoserve access
+The Fastify service under `server/` is retained only as a rollback reference during cutover. Do not deploy it for a new environment.
 
-The demo uses the existing Vercel and Railway URLs and a sender account controlled
-by the developer. OTP generation, delivery, verification, expiry, rate limiting,
-and the server-signed onboarding proof all remain enabled exactly as they will in
-production.
+## 1. Prepare Supabase
 
-### 1. Configure a real demo sender
+1. Create the production Supabase project in the intended region.
+2. Install and authenticate the Supabase CLI.
+3. Link the repository and apply every migration in `supabase/migrations`.
+4. Confirm that the `portal`, `ticket`, and `inventory` schemas are exposed in the project API settings.
+5. Confirm the `portal-files` bucket exists and is private.
+6. Confirm RLS is enabled on every application table and that anon/authenticated roles cannot query those tables directly.
 
-Use the developer-owned `momently.in` domain with a dedicated sending subdomain:
-
-```text
-send.momently.in
+```bash
+supabase login
+supabase link --project-ref <project-ref>
+supabase db push
 ```
 
-1. In Resend, add `send.momently.in` as a sending domain.
-2. In GoDaddy, open `momently.in` → DNS → Manage DNS.
-3. Add every MX and TXT record displayed by Resend. Copy Resend's values exactly
-   and keep GoDaddy's default TTL. Do not remove or modify existing website, NS,
-   A, AAAA, or CNAME records.
-4. In Resend, select **Verify DNS Records** and wait for the domain status to
-   become **Verified**.
-5. Create a **Sending access** API key restricted to `send.momently.in`.
+## 2. Configure Edge Function secrets
 
-Set these Railway variables:
+Generate independent random values for `VERIFICATION_SECRET`, `BOOTSTRAP_SECRET`, and `INBOUND_EMAIL_SECRET`.
 
-```text
-RESEND_API_KEY=<secret Resend sending key>
-SMTP_FROM=Innoserve Portal Demo <no-reply@send.momently.in>
+```bash
+supabase secrets set \
+  FRONTEND_URL=https://your-frontend.example \
+  RESEND_API_KEY=<resend-key> \
+  SMTP_FROM='Innoserve <noreply@your-verified-domain.example>' \
+  VERIFICATION_SECRET=<random-secret> \
+  BOOTSTRAP_SECRET=<different-random-secret> \
+  INBOUND_EMAIL_SECRET=<different-random-secret> \
+  DEFAULT_EMAIL_CATEGORY_ID=<ticket-category-id>
 ```
 
-Leave `SMTP_HOST`, `SMTP_USER`, and `SMTP_PASS` unset. Resend uses HTTPS and works
-on Railway plans where outbound SMTP is unavailable. The `no-reply` address does
-not require a GoDaddy mailbox.
+`SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` are supplied to hosted Edge Functions by Supabase. Never expose the service-role key to the frontend.
 
-### 2. Railway API variables
-
-Set these variables on the Railway API service before deploying:
-
-```text
-NODE_ENV=production
-DATABASE_URL=<Railway PostgreSQL connection reference>
-JWT_SECRET=<at least 32 cryptographically random bytes>
-CORS_ORIGIN=https://innoserve-test.vercel.app
-FRONTEND_URL=https://innoserve-test.vercel.app
-BASE_URL=https://api-production-7469.up.railway.app
-SMTP_FROM=Innoserve Portal Demo <no-reply@send.momently.in>
-RESEND_API_KEY=<secret Resend sending key>
-SEED_ON_STARTUP=false
+```bash
+supabase functions deploy api
+supabase functions deploy graphql
+supabase functions deploy bootstrap-admin
+supabase functions deploy migrate-users
+supabase functions deploy inbound-email
 ```
 
-Never commit real values to Git or expose the Resend key in Vercel/browser code.
+## 3. Configure Supabase Auth
 
-Railway runs database migrations before deployment and checks `/ready`. A release
-will not become healthy unless PostgreSQL and an email provider are configured.
+In Authentication → URL Configuration:
 
-The current release includes migrations `0006`–`0008`. Confirm the Railway
-pre-deploy log contains `Migrations applied successfully` before testing the new
-ticket timestamps, purchase orders, or automatic customer projects.
+- Set Site URL to the production frontend URL.
+- Add `/reset-password` on production and localhost to Redirect URLs.
+- Disable public sign-up; onboarding remains an OTP-reviewed workflow.
+- Configure the email template and sender for invitations and password recovery.
 
-### 3. Vercel frontend variable
+For a new database, create the first administrator exactly once:
 
-Set this variable for Production and Preview:
-
-```text
-PRIVATE_API_BASE_URL=https://api-production-7469.up.railway.app
+```bash
+curl --fail-with-body \
+  -H 'content-type: application/json' \
+  -H 'x-bootstrap-secret: <BOOTSTRAP_SECRET>' \
+  -d '{"name":"Administrator","email":"admin@example.com","password":"replace-with-12+-character-password"}' \
+  https://<project-ref>.supabase.co/functions/v1/bootstrap-admin
 ```
 
-Environment-variable changes only affect new Vercel deployments, so redeploy the
-frontend after saving it.
+The bootstrap endpoint refuses to create another administrator after the first one exists.
 
-### 4. Demo smoke test
+## 4. Configure the frontend
 
-Verify all of the following before announcing the launch:
-
-1. `GET /ready` on the API returns HTTP 200.
-2. Customer registration sends and verifies an OTP.
-3. Customer registration completes and appears in the admin approval queue.
-4. Login, logout, and forgot-password email work.
-5. An authenticated user can upload and retrieve an allowed file.
-6. The browser console has no failed API requests on each role dashboard.
-7. A customer created by Super Admin receives credentials, can log in, sees the
-   automatically created General Support project, and can raise a ticket.
-8. An older customer with no linked login shows **Create Access** in Admin and
-   receives working credentials after that action is confirmed.
-9. An engineer can accept a ticket and use an available inventory item; ticket
-   export includes Created, Received, and Closed timestamps.
-10. Super Admin can upload, view, update, and delete a purchase order under
-    Inventory → PO Tracking.
-11. Two different roles can remain signed in in separate tabs of the same browser.
-12. Multiple NOC operators can be created and each sees tickets only for their
-    assigned state.
-
-## Phase B: client-owned production handover
-
-After Innoserve provides DNS and mail-provider access, add `innoserve.in` (or a
-dedicated sending subdomain) in Resend and publish all records supplied by Resend.
-Set `RESEND_API_KEY` and change `SMTP_FROM` to an address on the exact verified
-domain, for example:
+Set for Production and Preview, then redeploy:
 
 ```text
-Innoserve <noreply@innoserve.in>
+PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
+PUBLIC_SUPABASE_PUBLISHABLE_KEY=<sb_publishable_key>
 ```
 
-Replace the Momently Resend key and sender after Innoserve delivery passes the
-smoke test. Do not use `innoserve.com`: it currently publishes a null MX record
-and an SPF policy that rejects all mail.
+The Supabase–Vercel connection syncs `SUPABASE_URL` and
+`SUPABASE_PUBLISHABLE_KEY`, but SvelteKit only exposes variables prefixed with
+`PUBLIC_` to browser code. Add the two `PUBLIC_*` aliases above to the Vercel
+project for Production and Preview.
 
-### Custom domain follow-up
+Do not set `PRIVATE_API_BASE_URL` after cutover. It exists only for rollback to the old Fastify server.
 
-When the final frontend domain is attached, update `CORS_ORIGIN` and
-`FRONTEND_URL` on Railway. Multiple allowed origins can be comma-separated.
-Update `PRIVATE_API_BASE_URL` only if the API domain changes, then redeploy both
-services and repeat the smoke test.
+## 5. Move existing PostgreSQL data
+
+If the old Railway database is still reachable, use the exact `pg_dump`/`psql`
+sequence in `SUPABASE_MIGRATION.md`. It removes migration-seeded roles before
+the restore and finalizes roles, password cleanup, and projects afterward.
+
+After importing users, send invitations to active accounts that do not yet have an Auth identity:
+
+```bash
+curl --fail-with-body \
+  -X POST \
+  -H 'x-bootstrap-secret: <BOOTSTRAP_SECRET>' \
+  https://<project-ref>.supabase.co/functions/v1/migrate-users
+```
+
+Old bcrypt passwords cannot be used directly by the browser Auth flow; users set a new Supabase password from their invitation.
+
+## 6. Configure inbound email
+
+Point the inbound provider at:
+
+```text
+https://<project-ref>.supabase.co/functions/v1/inbound-email
+```
+
+Send the secret in `x-inbound-secret`. If the provider cannot add a header, append `?secret=<INBOUND_EMAIL_SECRET>`. Set `DEFAULT_EMAIL_CATEGORY_ID` to an active category first.
+
+## 7. Smoke test
+
+1. Admin login, logout, recovery, and password update work.
+2. Customer and engineer OTP emails arrive through Resend.
+3. Onboarding creates pending records and rejects reused or expired proofs.
+4. Approving a customer or engineer sends an invitation and permits login after password setup.
+5. Private KYC documents, avatars, ticket evidence, and purchase orders open only for authorized users.
+6. Every role dashboard loads without failed requests.
+7. NOC can assign and reassign engineers and planners.
+8. Ticket transitions, closure evidence, RCA, replacements, inventory usage, and payouts work.
+9. Inventory stock remains correct under two simultaneous requests.
+10. The browser contains no service-role key and direct PostgREST table reads fail.
+11. Inbound email deduplicates repeated message IDs and respects allowlists and quotas.
+
+Keep the old service read-only until this checklist passes, then remove Railway variables and DNS records.

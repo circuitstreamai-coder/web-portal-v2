@@ -1,6 +1,7 @@
 <script lang="ts">
   import { type Customer } from "./queries";
   import { lookupPincode } from "$lib/utils/pincode";
+  import { restRequest } from "$lib/api/rest";
 
   const INDIAN_STATES = [
     "Andhra Pradesh","Arunachal Pradesh","Assam","Bihar","Chhattisgarh",
@@ -95,12 +96,10 @@
     else secEmailCheckStatus = "checking";
 
     try {
-      const res = await fetch("/api/check-email", {
+      const result = await restRequest<{ exists: boolean }>("/api/check-email", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, flow: "customer" }),
       });
-      const result = await res.json();
       if (field === "primary") {
         emailCheckStatus = result.exists ? "taken" : "ok";
         if (result.exists) errors.email = "Email is already in use";
