@@ -2,7 +2,7 @@ project_id = "innoserve-portal"
 
 [api]
 enabled = true
-schemas = ["public", "portal", "ticket", "inventory"]
+schemas = ["public", "graphql_public", "portal", "ticket", "inventory"]
 extra_search_path = ["public", "extensions"]
 max_rows = 1000
 

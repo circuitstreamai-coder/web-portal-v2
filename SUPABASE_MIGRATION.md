@@ -7,9 +7,22 @@ The browser now authenticates with Supabase Auth and sends its access token to t
 - `api`: existing REST paths, uploads, signed private-file access, and operational workflows
 - `graphql`: existing read queries and onboarding mutations
 
-The client uses these functions when `PUBLIC_SUPABASE_URL` and `PUBLIC_SUPABASE_ANON_KEY` are set. With those variables absent, the Fastify proxy remains available as a temporary rollback path.
+The client uses these functions when `PUBLIC_SUPABASE_URL` and
+`PUBLIC_SUPABASE_PUBLISHABLE_KEY` are set. `PUBLIC_SUPABASE_ANON_KEY` remains a
+legacy-compatible fallback. With these variables absent, the Fastify proxy
+remains available as a temporary rollback path.
 
 Files are stored in the private `portal-files` bucket. Application tables retain numeric IDs through `portal.storage_files`, avoiding a disruptive identifier change.
+
+## Hosted project setup
+
+After `npx supabase login`, one script links the project, applies migrations,
+pushes the secrets in `supabase/.env.local`, deploys all Edge Functions, and
+writes the browser keys into `client/.env`:
+
+```bash
+supabase/scripts/setup.sh <project-ref> [https://your-frontend.example]
+```
 
 ## Database migration
 

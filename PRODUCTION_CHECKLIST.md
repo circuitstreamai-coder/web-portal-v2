@@ -76,8 +76,13 @@ Set for Production and Preview, then redeploy:
 
 ```text
 PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
-PUBLIC_SUPABASE_ANON_KEY=<publishable-anon-key>
+PUBLIC_SUPABASE_PUBLISHABLE_KEY=<sb_publishable_key>
 ```
+
+The Supabase–Vercel connection syncs `SUPABASE_URL` and
+`SUPABASE_PUBLISHABLE_KEY`, but SvelteKit only exposes variables prefixed with
+`PUBLIC_` to browser code. Add the two `PUBLIC_*` aliases above to the Vercel
+project for Production and Preview.
 
 Do not set `PRIVATE_API_BASE_URL` after cutover. It exists only for rollback to the old Fastify server.
 

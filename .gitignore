@@ -28,3 +28,7 @@ vite.config.ts.timestamp-*
 .claude/
 .codex
 uploads/
+
+# Supabase CLI state
+supabase/.temp/
+supabase/.branches/

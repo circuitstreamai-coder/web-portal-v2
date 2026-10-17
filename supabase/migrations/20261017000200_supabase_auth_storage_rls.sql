@@ -147,7 +147,7 @@ begin
 end
 $$;
 
-alter table storage.objects enable row level security;
+-- storage.objects already has RLS enabled and is owned by supabase_storage_admin.
 
 drop policy if exists "portal file owners can read" on storage.objects;
 -- No direct Storage read policy is granted. The API Edge Function performs
