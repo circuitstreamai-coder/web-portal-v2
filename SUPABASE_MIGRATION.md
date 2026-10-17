@@ -24,6 +24,16 @@ writes the browser keys into `client/.env`:
 supabase/scripts/setup.sh <project-ref> [https://your-frontend.example]
 ```
 
+`config.toml` holds local-development values. Push production Auth settings
+(Site URL, redirect URLs, disabled sign-up, Resend SMTP, and the templates in
+`supabase/templates/`) separately:
+
+```bash
+supabase/scripts/push-auth-config.sh <project-ref> https://your-frontend.example
+```
+
+Set `DRY_RUN=1` to preview the diff without pushing.
+
 ## Database migration
 
 Apply migrations to an empty Supabase project first:
