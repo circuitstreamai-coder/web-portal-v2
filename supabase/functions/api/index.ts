@@ -1,3 +1,4 @@
+import { otpEmail } from "../_shared/email.ts";
 import {
   authenticate,
   corsHeaders,
@@ -108,14 +109,16 @@ async function sendOtp(request: Request): Promise<Response> {
   const resendKey = Deno.env.get("RESEND_API_KEY");
   const from = Deno.env.get("SMTP_FROM");
   if (!resendKey || !from) throw { status: 500, message: "Email provider is not configured" };
+  const message = otpEmail(otp, String(body.flow), 10);
   const delivery = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       from,
       to: [email],
-      subject: "Your Innoserve verification code",
-      html: `<p>Your verification code is:</p><p style="font-size:28px;font-weight:700;letter-spacing:6px">${otp}</p><p>This code expires in 10 minutes.</p>`,
+      subject: `${otp} is your Innoserve verification code`,
+      html: message.html,
+      text: message.text,
     }),
   });
   if (!delivery.ok) {
