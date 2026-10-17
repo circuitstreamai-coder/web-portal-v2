@@ -89,6 +89,7 @@
     "engineer",
     "l2_engineer",
     "l3_engineer",
+    "vendor",
   ];
 
   const assignableRoles = $derived(

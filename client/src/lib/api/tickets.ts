@@ -2,7 +2,7 @@ import { invalidate } from '$lib/stores/query';
 import { restRequest, ApiError } from '$lib/api/rest';
 import type { Ticket } from '$lib/modules/data/tickets/queries';
 import type { TicketStatus } from '$lib/config/roles';
-import { uploadFile, fileUrl } from '$lib/api/upload';
+import { uploadFile, fileReference } from '$lib/api/upload';
 
 export type TicketEscalationLevel = 'L1' | 'L2' | 'L3';
 
@@ -143,7 +143,7 @@ export async function uploadTicketAttachment(
   input: UploadTicketAttachmentInput,
 ): Promise<{ fileUrl: string }> {
   const uploadedFileId = await uploadFile(input.file);
-  const uploadedFileUrl = fileUrl(uploadedFileId);
+  const uploadedFileUrl = fileReference(uploadedFileId);
   const created = await createAttachment(input.ticketId, uploadedFileUrl, input.type);
   return { fileUrl: created.fileUrl ?? uploadedFileUrl };
 }

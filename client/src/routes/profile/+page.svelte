@@ -3,6 +3,8 @@
   import { authStore } from '$lib/stores/auth';
   import type { User } from '$lib/stores/auth';
   import { ApiError, restRequest } from '$lib/api/rest';
+  import { resolveFileUrl } from '$lib/api/upload';
+  import { getSupabaseClient, isSupabaseConfigured } from '$lib/supabase/client';
 
   // ── State ─────────────────────────────────────────────────────────────────
 
@@ -14,12 +16,25 @@
   let editEmail      = $state('');
   let avatarFile     = $state<File | null>(null);
   let avatarPreview  = $state<string | null>(null);
+  let avatarUrl      = $state<string | null>(null);
   let profileErrors  = $state<Record<string, string>>({});
   let profileSaving  = $state(false);
 
   $effect(() => {
     editName  = user?.name  ?? '';
     editEmail = user?.email ?? '';
+  });
+
+  $effect(() => {
+    const fileId = user?.avatarFileId;
+    avatarUrl = null;
+    if (!fileId) return;
+
+    let active = true;
+    resolveFileUrl(`/file/${fileId}`)
+      .then((url) => { if (active) avatarUrl = url; })
+      .catch(() => { if (active) avatarUrl = null; });
+    return () => { active = false; };
   });
 
   function onAvatarChange(e: Event) {
@@ -130,10 +145,22 @@
     submitting = true;
     successMsg = '';
     try {
-      await restRequest('/api/auth/change-password', {
-        method: 'POST',
-        body: JSON.stringify({ currentPassword, newPassword }),
-      });
+      if (isSupabaseConfigured()) {
+        if (!user?.email) throw new ApiError('Your account has no login email', 400);
+        const supabase = getSupabaseClient();
+        const { error: verifyError } = await supabase.auth.signInWithPassword({
+          email: user.email,
+          password: currentPassword,
+        });
+        if (verifyError) throw new ApiError(verifyError.message, 400);
+        const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
+        if (updateError) throw new ApiError(updateError.message, updateError.status ?? 400);
+      } else {
+        await restRequest('/api/auth/change-password', {
+          method: 'POST',
+          body: JSON.stringify({ currentPassword, newPassword }),
+        });
+      }
       successMsg      = 'Password changed successfully.';
       currentPassword = '';
       newPassword     = '';
@@ -174,8 +201,8 @@
         <div class="relative shrink-0">
           {#if avatarPreview}
             <img src={avatarPreview} alt="Avatar preview" class="w-16 h-16 rounded-full object-cover" />
-          {:else if user?.avatarFileId}
-            <img src={`/file/${user.avatarFileId}`} alt="Avatar" class="w-16 h-16 rounded-full object-cover" />
+          {:else if avatarUrl}
+            <img src={avatarUrl} alt="Avatar" class="w-16 h-16 rounded-full object-cover" />
           {:else}
             <div class="w-16 h-16 rounded-full bg-[#E87D1F] flex items-center justify-center text-white text-[18px] font-bold">
               {user?.name?.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase() ?? '?'}

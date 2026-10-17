@@ -1,8 +1,6 @@
 import type { RequestHandler } from './$types';
-import type { Config } from '@sveltejs/adapter-vercel';
 
-// Use Vercel Edge runtime — no execution timeout, supports long-lived streaming.
-export const config: Config = { runtime: 'edge' };
+// Legacy Fastify rollback path only. Supabase mode polls the Edge API directly.
 
 // Re-open the connection every 55 s from the client side so it fits safely
 // within any upstream proxy timeout; EventSource auto-reconnects.

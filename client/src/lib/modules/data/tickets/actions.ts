@@ -1,6 +1,6 @@
 import { restRequest } from "$lib/api/rest";
 import { invalidate } from "$lib/stores/query";
-import { uploadFile, fileUrl } from "$lib/api/upload";
+import { uploadFile, fileReference } from "$lib/api/upload";
 import type { Ticket, TicketHistory, Attachment, TicketCategory } from "./queries";
 import {
   assignTicket as assignTicketRequest,
@@ -176,7 +176,7 @@ export async function uploadTicketAttachment(
   input: UploadTicketAttachmentInput,
 ): Promise<{ fileUrl: string }> {
   const uploadedFileId = await uploadFile(input.file);
-  const uploadedFileUrl = fileUrl(uploadedFileId);
+  const uploadedFileUrl = fileReference(uploadedFileId);
   const created = await createAttachment({
     ticketId: input.ticketId,
     fileUrl: uploadedFileUrl,

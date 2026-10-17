@@ -3,6 +3,7 @@
   import { submitEngineerOnboarding } from "$lib/modules/onboarding/engineer-api";
   import { invalidate } from "$lib/stores/query";
   import { lookupPincode } from "$lib/utils/pincode";
+  import { restRequest } from "$lib/api/rest";
 
   let { onClose }: { onClose: () => void } = $props();
 
@@ -124,12 +125,10 @@
     }
     emailCheckStatus = "checking";
     try {
-      const res = await fetch("/api/check-email", {
+      const data = await restRequest<{ exists: boolean }>("/api/check-email", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, flow: "engineer" }),
       });
-      const data = await res.json();
       emailCheckStatus = data.exists ? "taken" : "ok";
       if (data.exists) errors.email = "Email is already in use";
       else delete errors.email;

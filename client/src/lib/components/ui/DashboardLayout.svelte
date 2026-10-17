@@ -7,6 +7,7 @@
   import { notifications, unreadCount } from "$lib/stores/notifications";
   import Logo from "$lib/ui/Logo.svelte";
   import SlaBreachPoller from "$lib/components/SlaBreachPoller.svelte";
+  import { resolveFileUrl } from "$lib/api/upload";
 
   interface NavItem {
     label: string;
@@ -169,6 +170,19 @@
       .join("")
       .toUpperCase() ?? "?",
   );
+  let avatarUrl = $state<string | null>(null);
+
+  $effect(() => {
+    const fileId = user?.avatarFileId;
+    avatarUrl = null;
+    if (!fileId) return;
+
+    let active = true;
+    resolveFileUrl(`/file/${fileId}`)
+      .then((url) => { if (active) avatarUrl = url; })
+      .catch(() => { if (active) avatarUrl = null; });
+    return () => { active = false; };
+  });
 
   async function handleLogout() {
     showDropdown = false;
@@ -403,9 +417,9 @@
     <!-- User info at bottom -->
     <div class="px-4 py-4 border-t border-white/10 shrink-0">
       <div class="flex items-center gap-3">
-        {#if user?.avatarFileId}
+        {#if avatarUrl}
           <img
-            src={`/file/${user.avatarFileId}`}
+            src={avatarUrl}
             alt="Avatar"
             class="w-8 h-8 rounded-full object-cover shrink-0"
           />
@@ -605,9 +619,9 @@
             aria-label="User menu"
             aria-expanded={showDropdown}
           >
-            {#if user?.avatarFileId}
+            {#if avatarUrl}
               <img
-                src={`/file/${user.avatarFileId}`}
+                src={avatarUrl}
                 alt="Avatar"
                 class="w-full h-full object-cover"
               />

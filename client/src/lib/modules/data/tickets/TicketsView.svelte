@@ -7,7 +7,7 @@
   import { assignTicket, updateTicketStatus } from "$lib/api/tickets";
   import { type TicketStatus } from "$lib/config/roles";
   import { fetchProjects, type Project } from "$lib/modules/data/projects/queries";
-  import { ApiError } from "$lib/api/rest";
+  import { ApiError, restRequest } from "$lib/api/rest";
   import { toast } from "svelte-sonner";
   import Pagination from "$lib/components/Pagination.svelte";
 
@@ -106,14 +106,9 @@
     const controller = new AbortController();
     loading = true;
 
-    fetch(`/api/paginated/tickets?${params}`, {
-      credentials: 'include',
+    restRequest<{ items: Ticket[]; total: number; totalPages: number }>(`/api/paginated/tickets?${params}`, {
       signal: controller.signal,
     })
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
       .then((data: { items: Ticket[]; total: number; totalPages: number }) => {
         pagedTickets = data.items.map(toRow);
         totalItems   = data.total;

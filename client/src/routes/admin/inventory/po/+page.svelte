@@ -3,7 +3,7 @@
 	import * as Icons from '$lib/icons';
 	import { toast } from 'svelte-sonner';
 	import { restRequest } from '$lib/api/rest';
-	import { fileUrl, uploadFile } from '$lib/api/upload';
+	import { openFile, uploadFile } from '$lib/api/upload';
 
 	interface PurchaseOrder {
 		id: string;
@@ -265,7 +265,7 @@
 									{o.totalAmount != null ? `₹${o.totalAmount.toLocaleString('en-IN')}` : '—'}
 								</td>
 								<td class="py-3 px-3 text-[12px]">
-									<a href={fileUrl(o.attachmentFileId)} target="_blank" rel="noreferrer" class="font-semibold text-[#0B5EA8] hover:text-[#E87D1F] hover:underline">View PO</a>
+									<button type="button" onclick={() => openFile(o.attachmentFileId).catch((err) => toast.error(err.message))} class="font-semibold text-[#0B5EA8] hover:text-[#E87D1F] hover:underline cursor-pointer">View PO</button>
 								</td>
 								<td class="py-3 px-3">
 									<div class="flex gap-1">
@@ -345,7 +345,7 @@
 						class="block w-full rounded-lg border border-gray-200 px-3 py-2 text-[12px] text-gray-600 file:mr-3 file:rounded-md file:border-0 file:bg-gray-100 file:px-3 file:py-1.5 file:text-[12px] file:font-semibold"
 					/>
 					{#if editOrder && !poFile}
-						<a href={fileUrl(editOrder.attachmentFileId)} target="_blank" rel="noreferrer" class="text-[11px] text-[#0B5EA8] hover:underline">View current document</a>
+						<button type="button" onclick={() => openFile(editOrder!.attachmentFileId).catch((err) => toast.error(err.message))} class="text-[11px] text-[#0B5EA8] hover:underline cursor-pointer">View current document</button>
 					{/if}
 				</label>
 				<div class="flex justify-end gap-3 pt-2 border-t border-gray-100">

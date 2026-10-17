@@ -5,6 +5,8 @@
   import { authStore } from "$lib/stores/auth";
   import { notifications } from "$lib/stores/notifications";
   import { currentPortalRole } from "$lib/utils/portal-session";
+  import { fetchNotifications } from "$lib/api/notifications";
+  import { isSupabaseConfigured } from "$lib/supabase/client";
 
   interface BackendNotification {
     id: string;
@@ -25,12 +27,21 @@
     }
   });
 
-  // Open an SSE connection to /api/stream.
-  // The server polls the Railway backend every 10 s and pushes a 'notifications'
-  // event only when something changes — true push from the browser's perspective.
-  // EventSource auto-reconnects if the connection drops (e.g. Vercel 55 s timeout).
+  // Supabase mode polls the compatibility API; legacy mode retains the SSE
+  // bridge so rollback does not change notification behaviour.
   $effect(() => {
     if (!data.user) return;
+
+    if (isSupabaseConfigured()) {
+      let active = true;
+      const refresh = async () => {
+        const items = await fetchNotifications();
+        if (active) notifications.seed(items);
+      };
+      refresh();
+      const timer = setInterval(refresh, 10_000);
+      return () => { active = false; clearInterval(timer); };
+    }
 
     let source: EventSource | null = null;
 

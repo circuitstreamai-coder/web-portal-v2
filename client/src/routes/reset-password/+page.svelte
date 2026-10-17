@@ -3,6 +3,7 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import { restRequest, ApiError } from '$lib/api/rest';
+  import { getSupabaseClient, isSupabaseConfigured } from '$lib/supabase/client';
   import Logo from '$lib/ui/Logo.svelte';
 
   // ── State ─────────────────────────────────────────────────────────────────
@@ -19,7 +20,12 @@
 
   // ── Read token from URL, redirect if missing ──────────────────────────────
 
-  onMount(() => {
+  onMount(async () => {
+    if (isSupabaseConfigured()) {
+      const { data } = await getSupabaseClient().auth.getSession();
+      if (!data.session) linkExpired = true;
+      return;
+    }
     const t = page.url.searchParams.get('token');
     if (!t) {
       goto('/forgot-password', { replaceState: true });
@@ -57,10 +63,16 @@
     loading = true;
     linkExpired = false;
     try {
-      await restRequest('/api/auth/reset-password', {
-        method: 'POST',
-        body: JSON.stringify({ token, newPassword }),
-      });
+      if (isSupabaseConfigured()) {
+        const { error } = await getSupabaseClient().auth.updateUser({ password: newPassword });
+        if (error) throw new ApiError(error.message, error.status ?? 400);
+        await getSupabaseClient().auth.signOut();
+      } else {
+        await restRequest('/api/auth/reset-password', {
+          method: 'POST',
+          body: JSON.stringify({ token, newPassword }),
+        });
+      }
       done = true;
       // Auto-redirect to /login after 3 seconds
       setTimeout(() => goto('/login', { replaceState: true }), 3000);

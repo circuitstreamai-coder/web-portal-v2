@@ -1,4 +1,9 @@
 import { portalRoleHeaders } from '$lib/utils/portal-session';
+import {
+  isSupabaseConfigured,
+  supabaseAuthHeaders,
+  supabaseFunctionUrl,
+} from '$lib/supabase/client';
 
 // REST fetch utility — sends credentials (HTTP-only cookie auth).
 
@@ -64,19 +69,7 @@ export async function restRequest<T>(
   path: string,
   init: RequestInit = {},
 ): Promise<T> {
-  const { headers, body, ...rest } = init;
-  const isFormData = body instanceof FormData;
-
-  const requestHeaders = isFormData || body === undefined
-    ? portalRoleHeaders(headers)
-    : portalRoleHeaders({ 'Content-Type': 'application/json', ...(headers as Record<string, string>) });
-
-  const res = await fetch(path, {
-    credentials: 'include',
-    headers: requestHeaders,
-    body,
-    ...rest,
-  });
+  const res = await apiFetch(path, init);
 
   if (!res.ok) {
     let message = res.statusText;
@@ -93,4 +86,27 @@ export async function restRequest<T>(
 
   if (res.status === 204) return {} as T;
   return res.json() as Promise<T>;
+}
+
+export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const { headers, body, ...rest } = init;
+  const isFormData = body instanceof FormData;
+
+  let requestHeaders = isFormData || body === undefined
+    ? portalRoleHeaders(headers)
+    : portalRoleHeaders({ 'Content-Type': 'application/json', ...(headers as Record<string, string>) });
+
+  let requestPath = path;
+  if (isSupabaseConfigured()) {
+    requestHeaders = await supabaseAuthHeaders(requestHeaders);
+    requestPath = supabaseFunctionUrl('api', path);
+  }
+
+  return fetch(requestPath, {
+    credentials: 'include',
+    headers: requestHeaders,
+    body,
+    ...rest,
+  });
+
 }

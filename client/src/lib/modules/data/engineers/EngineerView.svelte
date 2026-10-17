@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { fileUrl } from "$lib/api/upload";
+  import { onMount } from "svelte";
+  import { resolveFileUrl } from "$lib/api/upload";
   import MaskedContact from "$lib/components/MaskedContact.svelte";
   import type { EngineerProfile } from "./queries";
 
@@ -15,22 +16,24 @@
 
   // Stored URLs are absolute (http://host/file/123). Extract the ID and rebuild
   // as a relative path so requests go through the Vite proxy / reverse proxy.
-  function toRelUrl(stored: string | null): string | null {
-    if (!stored) return null;
-    const match = stored.match(/\/file\/(\d+)$/);
-    return match ? fileUrl(match[1]) : stored;
-  }
+  let profilePhoto = $state<string | null>(null);
+  let docs = $state<Array<{ label: string; url: string | null }>>([]);
 
-  const profilePhoto = $derived(toRelUrl(engineer.profilePhotoUrl));
-
-  const docs = $derived([
-    { label: "Aadhaar Card (Front)",    url: toRelUrl(engineer.aadhaarFrontUrl) },
-    { label: "Aadhaar Card (Back)",     url: toRelUrl(engineer.aadhaarBackUrl) },
-    { label: "PAN Card",                url: toRelUrl(engineer.panCardUrl) },
-    { label: "Driving Licence (Front)", url: toRelUrl(engineer.dlFrontUrl) },
-    { label: "Driving Licence (Back)",  url: toRelUrl(engineer.dlBackUrl) },
-    { label: "Cancel Cheque",           url: toRelUrl(engineer.cancelChequeUrl) },
-  ]);
+  onMount(async () => {
+    const sources = [
+      ["Aadhaar Card (Front)", engineer.aadhaarFrontUrl],
+      ["Aadhaar Card (Back)", engineer.aadhaarBackUrl],
+      ["PAN Card", engineer.panCardUrl],
+      ["Driving Licence (Front)", engineer.dlFrontUrl],
+      ["Driving Licence (Back)", engineer.dlBackUrl],
+      ["Cancel Cheque", engineer.cancelChequeUrl],
+    ] as const;
+    profilePhoto = engineer.profilePhotoUrl ? await resolveFileUrl(engineer.profilePhotoUrl).catch(() => null) : null;
+    docs = await Promise.all(sources.map(async ([label, value]) => ({
+      label,
+      url: value ? await resolveFileUrl(value).catch(() => null) : null,
+    })));
+  });
 
   let lightboxUrl = $state<string | null>(null);
 

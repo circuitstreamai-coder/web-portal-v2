@@ -87,16 +87,22 @@ const SUBMIT_ENGINEER_ONBOARDING = `
 export async function submitEngineerOnboarding(
   formData: EngineerOnboardingFormData,
 ): Promise<EngineerOnboardingResult> {
+  if (!formData.verificationToken) throw new Error('Email verification has expired. Please verify again.');
+  const uploadContext = {
+    verificationToken: formData.verificationToken,
+    email: formData.email,
+    flow: 'engineer' as const,
+  };
   // Upload all documents in parallel (profile photo is optional)
   const [aadhaarFrontId, aadhaarBackId, panFileId, dlFrontId, dlBackId, cancelChequeFileId, profilePhotoId] =
     await Promise.all([
-      uploadFile(formData.aadhaarFront),
-      uploadFile(formData.aadhaarBack),
-      uploadFile(formData.panFile),
-      uploadFile(formData.dlFront),
-      uploadFile(formData.dlBack),
-      uploadFile(formData.cancelChequeFile),
-      formData.profilePhoto ? uploadFile(formData.profilePhoto) : Promise.resolve(undefined),
+      uploadFile(formData.aadhaarFront, uploadContext),
+      uploadFile(formData.aadhaarBack, uploadContext),
+      uploadFile(formData.panFile, uploadContext),
+      uploadFile(formData.dlFront, uploadContext),
+      uploadFile(formData.dlBack, uploadContext),
+      uploadFile(formData.cancelChequeFile, uploadContext),
+      formData.profilePhoto ? uploadFile(formData.profilePhoto, uploadContext) : Promise.resolve(undefined),
     ]);
 
   const input: EngineerOnboardingInput = {
