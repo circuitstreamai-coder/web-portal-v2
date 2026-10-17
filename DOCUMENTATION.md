@@ -578,21 +578,34 @@ Additional states:
 
 ## 9. Environment Variables
 
-### Frontend (`web-portal/.env`)
+### Frontend (`client/.env`)
 | Variable | Default | Description |
 |---|---|---|
-| `PRIVATE_API_BASE_URL` | `https://api-production-7469.up.railway.app` | Railway API base URL |
+| `PRIVATE_API_BASE_URL` | `http://localhost:4000` in development | Server-only API origin used by the SvelteKit proxy; required in production |
 
-### Backend (`innoserve-api-test/.env`)
+### Backend (`server/.env`)
 | Variable | Required | Description |
 |---|---|---|
 | `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `JWT_SECRET` | Yes | JWT signing secret |
-| `CORS_ORIGIN` | No (default: `http://localhost:5173`) | Allowed CORS origin |
+| `DATABASE_URL_DIRECT` | No | Direct/non-pooled PostgreSQL URL used by migrations; falls back to `DATABASE_URL` |
+| `DATABASE_SSL` | No | Force PostgreSQL TLS on or off (`true`/`false`); Neon URLs enable it automatically |
+| `DATABASE_SSL_REJECT_UNAUTHORIZED` | No | Require a trusted PostgreSQL TLS certificate (`true`/`false`) |
+| `DATABASE_POOL_MAX` / `DATABASE_POOL_MIN` | No | Pool size limits (defaults: `20` / `2`) |
+| `DATABASE_IDLE_TIMEOUT_MS` | No | Idle connection timeout in milliseconds (default: `30000`) |
+| `DATABASE_CONNECTION_TIMEOUT_MS` | No | Connection timeout in milliseconds (default: `10000`) |
+| `JWT_SECRET` | Yes | JWT and OTP-proof signing secret |
+| `CORS_ORIGIN` | Production | Allowed frontend origins, comma-separated (default: `http://localhost:5173`) |
+| `FRONTEND_URL` | Production | Frontend origin used in email and password-reset links; HTTPS is required in production |
+| `BASE_URL` | Production | Public API origin used in file URLs; HTTPS is required in production |
 | `PORT` | No (default: `4000`) | HTTP server port |
 | `NODE_ENV` | No | `production` disables auto-seed and dev routes |
 | `SEED_ON_STARTUP` | No | Override seed behavior (`true`/`false`) |
-| `RESEND_API_KEY` | Yes (for email) | Resend email API key |
+| `DEFAULT_EMAIL_CATEGORY_ID` | No | Category UUID assigned to inbound-email tickets |
+| `SMTP_FROM` | Production | Sender name/address for transactional email |
+| `RESEND_API_KEY` | Email provider | Resend email API key; preferred when configured |
+| `SMTP_HOST` / `SMTP_SERVERNAME` | SMTP only | SMTP hostname and TLS server name (default: `smtp.gmail.com`) |
+| `SMTP_PORT` / `SMTP_SECURE` | SMTP only | SMTP port and TLS mode (defaults: `587` / `false`) |
+| `SMTP_USER` / `SMTP_PASS` | Email provider | SMTP credentials; both are required when Resend is not configured |
 
 ---
 

@@ -56,6 +56,10 @@
 
   let projects = $state<Project[]>([]);
   let loading = $state(true);
+  let refreshing = $state(false);
+  let searchQuery = $state('');
+  let statusFilter = $state<'all' | 'needs_action' | 'in_progress' | 'waiting' | 'closed'>('all');
+  let priorityFilter = $state<'all' | 'Critical' | 'High' | 'Medium' | 'Low'>('all');
 
   // Status update modal
   let statusTicket = $state<Ticket | null>(null);
@@ -90,6 +94,18 @@
   async function loadTickets() {
     const all = await fetchTickets();
     allTickets = all;
+  }
+
+  async function refreshTickets() {
+    refreshing = true;
+    try {
+      await loadTickets();
+      toast.success('Ticket queue refreshed');
+    } catch {
+      toast.error('Failed to refresh tickets');
+    } finally {
+      refreshing = false;
+    }
   }
 
   onMount(async () => {
@@ -127,8 +143,56 @@
   // ── Pagination ────────────────────────────────────────────────────────────
   const PAGE_SIZE = 15;
   let currentPage = $state(1);
-  const totalPages   = $derived(Math.max(1, Math.ceil(tickets.length / PAGE_SIZE)));
-  const pagedTickets = $derived(tickets.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE));
+  const filteredTickets = $derived.by(() => {
+    const query = searchQuery.trim().toLowerCase();
+    const statusGroups: Record<typeof statusFilter, string[]> = {
+      all: [],
+      needs_action: ['open', 'assigned', 'accepted', 'reopened'],
+      in_progress: ['in_progress', 'on_hold', 'pending_replacement'],
+      waiting: ['resolved', 'pending_validation'],
+      closed: ['closed'],
+    };
+
+    return tickets
+      .filter((ticket) => {
+        const normalizedStatus = normalizeStatus(ticket.status);
+        const matchesStatus = statusFilter === 'all' || statusGroups[statusFilter].includes(normalizedStatus);
+        const matchesPriority = priorityFilter === 'all' || priorityLabel(ticket.priority) === priorityFilter;
+        const matchesQuery = !query || [
+          ticket.ticketNumber,
+          ticket.title,
+          ticket.description,
+          projectName(ticket.projectId),
+          ticketLocation(ticket),
+        ].some((value) => value?.toLowerCase().includes(query));
+        return matchesStatus && matchesPriority && matchesQuery;
+      })
+      .sort((a, b) => {
+        const statusRank = (ticket: Ticket) => {
+          const status = normalizeStatus(ticket.status);
+          if (status === 'assigned' || status === 'accepted' || status === 'reopened') return 0;
+          if (status === 'in_progress' || status === 'on_hold') return 1;
+          if (status === 'resolved' || status === 'pending_validation') return 2;
+          return 3;
+        };
+        const rankDifference = statusRank(a) - statusRank(b);
+        if (rankDifference !== 0) return rankDifference;
+        const priorityRank: Record<string, number> = { Critical: 0, High: 1, Medium: 2, Low: 3 };
+        const priorityDifference = (priorityRank[priorityLabel(a.priority)] ?? 4) - (priorityRank[priorityLabel(b.priority)] ?? 4);
+        if (priorityDifference !== 0) return priorityDifference;
+        return new Date(a.slaDeadline || a.createdAt).getTime() - new Date(b.slaDeadline || b.createdAt).getTime();
+      });
+  });
+  const totalPages   = $derived(Math.max(1, Math.ceil(filteredTickets.length / PAGE_SIZE)));
+  const pagedTickets = $derived(filteredTickets.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE));
+
+  $effect(() => {
+    searchQuery;
+    statusFilter;
+    priorityFilter;
+    activeTab;
+    currentPage = 1;
+  });
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -151,9 +215,27 @@
   }
 
   function priorityBadge(p: string) {
-    if (p === 'High') return 'bg-red-50 text-red-500';
-    if (p === 'Medium') return 'bg-amber-50 text-amber-500';
+    const priority = p?.toLowerCase();
+    if (priority === 'critical') return 'bg-red-100 text-red-700';
+    if (priority === 'high') return 'bg-red-50 text-red-600';
+    if (priority === 'medium') return 'bg-amber-50 text-amber-600';
     return 'bg-green-50 text-green-600';
+  }
+
+  function priorityLabel(priority: string): 'Critical' | 'High' | 'Medium' | 'Low' {
+    const normalized = priority?.toLowerCase();
+    if (normalized === 'critical') return 'Critical';
+    if (normalized === 'high') return 'High';
+    if (normalized === 'medium') return 'Medium';
+    return 'Low';
+  }
+
+  function priorityAccent(priority: string): string {
+    const normalized = priority?.toLowerCase();
+    if (normalized === 'critical') return 'bg-red-700';
+    if (normalized === 'high') return 'bg-red-500';
+    if (normalized === 'medium') return 'bg-amber-400';
+    return 'bg-emerald-500';
   }
 
   function escalationBadge(level: string) {
@@ -165,6 +247,23 @@
   function fmtDate(d: string) {
     if (!d) return '—';
     return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  }
+
+  function slaInfo(ticket: Ticket): { label: string; classes: string } {
+    const status = normalizeStatus(ticket.status);
+    if (['closed', 'resolved', 'pending_validation'].includes(status)) {
+      return { label: status === 'closed' ? 'Completed' : 'Work complete', classes: 'text-emerald-700 bg-emerald-50' };
+    }
+    if (!ticket.slaDeadline) return { label: 'No SLA deadline', classes: 'text-gray-500 bg-gray-100' };
+
+    const diff = new Date(ticket.slaDeadline).getTime() - Date.now();
+    const absoluteHours = Math.max(1, Math.ceil(Math.abs(diff) / 3_600_000));
+    if (diff < 0) {
+      const value = absoluteHours >= 24 ? `${Math.ceil(absoluteHours / 24)}d` : `${absoluteHours}h`;
+      return { label: `${value} overdue`, classes: 'text-red-700 bg-red-50' };
+    }
+    if (absoluteHours <= 24) return { label: `${absoluteHours}h remaining`, classes: 'text-orange-700 bg-orange-50' };
+    return { label: `${Math.ceil(absoluteHours / 24)}d remaining`, classes: 'text-gray-600 bg-gray-100' };
   }
 
   function ticketLocation(ticket: Ticket): string {
@@ -264,6 +363,14 @@
     }
 
     return []; // pending_validation, closed — no actions
+  }
+
+  function primaryTicketAction(ticket: Ticket): TicketAction | undefined {
+    return getTicketActions(ticket)[0];
+  }
+
+  function secondaryTicketActions(ticket: Ticket): TicketAction[] {
+    return getTicketActions(ticket).slice(1);
   }
 
   async function handleAccept(ticket: Ticket) {
@@ -563,21 +670,51 @@
 {/if}
 
 <div class="flex flex-col gap-5">
+  <!-- Queue heading -->
+  <section class="relative overflow-hidden rounded-2xl bg-[#0B182A] px-5 py-5 text-white shadow-sm sm:px-7 sm:py-6">
+    <div class="absolute -right-16 -top-20 h-52 w-52 rounded-full bg-[#E87D1F]/15 blur-2xl"></div>
+    <div class="relative flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <div class="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/50">
+          <span class="h-2 w-2 rounded-full bg-[#E87D1F]"></span>
+          Field service workspace
+        </div>
+        <h1 class="text-[24px] font-bold tracking-tight sm:text-[28px]">
+          {activeTab === 'escalated' ? `${activeEscalationLevel} support queue` : 'Your work queue'}
+        </h1>
+        <p class="mt-1 max-w-xl text-[13px] leading-relaxed text-white/60 sm:text-[14px]">
+          {activeTab === 'escalated'
+            ? 'Review escalated work, assess the site issue, and move the ticket toward resolution.'
+            : 'Prioritised by workflow, urgency, and SLA so your next job is always clear.'}
+        </p>
+      </div>
+      <button
+        type="button"
+        onclick={refreshTickets}
+        disabled={refreshing}
+        class="inline-flex w-fit items-center gap-2 rounded-lg border border-white/15 bg-white/10 px-3.5 py-2 text-[12px] font-semibold text-white transition-colors hover:bg-white/15 disabled:opacity-60"
+      >
+        <svg class={refreshing ? 'animate-spin' : ''} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        {refreshing ? 'Refreshing…' : 'Refresh queue'}
+      </button>
+    </div>
+  </section>
 
-  <!-- Tabs (only for L2/L3 escalation engineers) -->
+  <!-- Queue tabs -->
   {#if isEscalationRole}
-    <div class="flex items-center gap-2 flex-wrap">
+    <div class="inline-flex w-fit max-w-full gap-1 rounded-xl border border-gray-200 bg-white p-1 shadow-sm">
       {#each [
-        { id: 'assigned'  as const, label: 'Assigned to Me',                   count: assignedTickets.length  },
-        { id: 'escalated' as const, label: `All ${activeEscalationLevel} Escalations`, count: escalatedTickets.length },
+        { id: 'assigned' as const, label: 'Assigned to me', count: assignedTickets.length },
+        { id: 'escalated' as const, label: `${activeEscalationLevel} escalations`, count: escalatedTickets.length },
       ] as tab}
         <button
-          onclick={() => { activeTab = tab.id; currentPage = 1; }}
-          class="flex items-center gap-2 px-5 py-2.5 rounded-lg border text-[13px] font-medium cursor-pointer transition-all
-                 {activeTab === tab.id ? 'bg-[linear-gradient(to_bottom,#0B182A,#021E44)] text-white border-[#0B182A]' : 'bg-white text-gray-500 border-gray-200 hover:border-[#0B182A]'}"
+          type="button"
+          onclick={() => (activeTab = tab.id)}
+          class="flex items-center gap-2 whitespace-nowrap rounded-lg px-3.5 py-2 text-[12px] font-semibold transition-colors sm:px-4
+            {activeTab === tab.id ? 'bg-[#0B182A] text-white' : 'text-gray-500 hover:bg-gray-50 hover:text-[#0B182A]'}"
         >
           {tab.label}
-          <span class="text-[11px] px-2 py-0.5 rounded-full {activeTab === tab.id ? 'bg-white/15' : 'bg-gray-100 text-gray-500'}">
+          <span class="rounded-full px-1.5 py-0.5 text-[10px] {activeTab === tab.id ? 'bg-white/15 text-white' : 'bg-gray-100 text-gray-500'}">
             {loading ? '…' : tab.count}
           </span>
         </button>
@@ -585,142 +722,201 @@
     </div>
   {/if}
 
-  <!-- Stats -->
-  <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+  <!-- Operational summary -->
+  <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
     {#each [
-      { label: 'Open', value: tickets.filter(t => normalizeStatus(t.status) === 'open').length, color: 'text-blue-600' },
-      { label: 'In Progress', value: tickets.filter(t => normalizeStatus(t.status) === 'in_progress').length, color: 'text-amber-600' },
-      { label: 'Pending Validation', value: tickets.filter(t => normalizeStatus(t.status) === 'pending_validation').length, color: 'text-purple-600' },
-      { label: 'Resolved', value: tickets.filter(t => normalizeStatus(t.status) === 'resolved').length, color: 'text-green-600' },
+      { label: 'Needs action', value: tickets.filter((t) => ['open', 'assigned', 'accepted', 'reopened'].includes(normalizeStatus(t.status))).length, color: 'text-[#E87D1F]', bar: 'bg-[#E87D1F]' },
+      { label: 'In progress', value: tickets.filter((t) => ['in_progress', 'on_hold', 'pending_replacement'].includes(normalizeStatus(t.status))).length, color: 'text-amber-700', bar: 'bg-amber-500' },
+      { label: 'Waiting review', value: tickets.filter((t) => ['resolved', 'pending_validation'].includes(normalizeStatus(t.status))).length, color: 'text-purple-700', bar: 'bg-purple-500' },
+      { label: 'Completed', value: tickets.filter((t) => normalizeStatus(t.status) === 'closed').length, color: 'text-emerald-700', bar: 'bg-emerald-500' },
     ] as stat}
-      <div class="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-        <p class="text-[12px] text-gray-400 mb-1">{stat.label}</p>
-        <p class="text-[24px] font-bold {stat.color}">{loading ? '—' : stat.value}</p>
-      </div>
+      <button
+        type="button"
+        onclick={() => (statusFilter = stat.label === 'Needs action' ? 'needs_action' : stat.label === 'In progress' ? 'in_progress' : stat.label === 'Waiting review' ? 'waiting' : 'closed')}
+        class="group relative overflow-hidden rounded-xl border border-gray-100 bg-white p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-gray-200 hover:shadow-md"
+      >
+        <span class="absolute inset-y-0 left-0 w-1 {stat.bar}"></span>
+        <p class="pl-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-gray-400">{stat.label}</p>
+        <div class="mt-1 flex items-end justify-between pl-1">
+          <p class="text-[26px] font-bold leading-none {stat.color}">{loading ? '—' : stat.value}</p>
+          <span class="text-[10px] font-medium text-gray-300 transition-colors group-hover:text-gray-500">Filter</span>
+        </div>
+      </button>
     {/each}
   </div>
 
-  <!-- Table -->
-  <div class="bg-white rounded-2xl p-6 shadow">
-    <div class="flex items-center gap-3 mb-4">
-      <h3 class="text-[18px] font-semibold text-[#0B182A]">
-        {activeTab === 'escalated' ? `All ${activeEscalationLevel} Escalated Tickets` : 'Assigned Tickets'}
-      </h3>
-      <span class="text-[12px] text-gray-500 bg-gray-100 px-3 py-1 rounded-full">{tickets.length} Total</span>
+  <!-- Search and filters -->
+  <section class="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
+    <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <div class="relative min-w-0 flex-1 lg:max-w-md">
+        <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-gray-400">
+          <Icons.Search size={15} />
+        </span>
+        <input
+          bind:value={searchQuery}
+          type="search"
+          placeholder="Search ticket, project, issue, or location"
+          class="h-10 w-full rounded-lg border border-gray-200 bg-gray-50/70 pl-9 pr-3 text-[13px] text-gray-700 outline-none transition-colors placeholder:text-gray-400 focus:border-[#0B182A] focus:bg-white"
+        />
+      </div>
+      <div class="flex flex-col gap-2 sm:flex-row">
+        <select bind:value={statusFilter} class="h-10 rounded-lg border border-gray-200 bg-white px-3 text-[12px] font-medium text-gray-600 outline-none focus:border-[#0B182A]">
+          <option value="all">All workflow stages</option>
+          <option value="needs_action">Needs action</option>
+          <option value="in_progress">In progress</option>
+          <option value="waiting">Waiting review</option>
+          <option value="closed">Completed</option>
+        </select>
+        <select bind:value={priorityFilter} class="h-10 rounded-lg border border-gray-200 bg-white px-3 text-[12px] font-medium text-gray-600 outline-none focus:border-[#0B182A]">
+          <option value="all">All priorities</option>
+          <option value="Critical">Critical priority</option>
+          <option value="High">High priority</option>
+          <option value="Medium">Medium priority</option>
+          <option value="Low">Low priority</option>
+        </select>
+        {#if searchQuery || statusFilter !== 'all' || priorityFilter !== 'all'}
+          <button
+            type="button"
+            onclick={() => { searchQuery = ''; statusFilter = 'all'; priorityFilter = 'all'; }}
+            class="h-10 rounded-lg px-3 text-[12px] font-semibold text-gray-500 transition-colors hover:bg-gray-100 hover:text-[#0B182A]"
+          >
+            Clear filters
+          </button>
+        {/if}
+      </div>
     </div>
 
-    <div class="overflow-x-auto">
-      <table class="w-full text-sm border-collapse">
-        <thead>
-          <tr class="border-b border-gray-100">
-            {#each ['TICKET', 'PROJECT', 'ISSUE', 'LOCATION', 'STATUS', 'PRIORITY', 'ESCALATION', 'DATE', '', 'ACTIONS'] as col}
-              <th class="text-left text-[11px] font-semibold text-gray-400 tracking-wide py-3 px-3 whitespace-nowrap">{col}</th>
-            {/each}
-          </tr>
-        </thead>
-        <tbody>
-          {#if loading}
-            <tr>
-              <td colspan="10" class="py-12 text-center text-[13px] text-gray-400">
-                <div class="flex items-center justify-center gap-2">
-                  <div class="w-4 h-4 border-2 border-gray-200 border-t-[#0B182A] rounded-full animate-spin"></div>
-                  Loading…
-                </div>
-              </td>
-            </tr>
-          {:else if tickets.length === 0}
-            <tr>
-              <td colspan="10" class="py-16 text-center">
-                <div class="flex flex-col items-center gap-2">
-                  <div class="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center">
-                    <Icons.Ticket size={22} stroke="#9ca3af" />
+    <div class="mt-5 flex items-center justify-between border-t border-gray-100 pt-4">
+      <div>
+        <h2 class="text-[15px] font-bold text-[#0B182A]">
+          {activeTab === 'escalated' ? `${activeEscalationLevel} escalated tickets` : 'Assigned tickets'}
+        </h2>
+        <p class="mt-0.5 text-[11px] text-gray-400">
+          {filteredTickets.length === tickets.length
+            ? `${tickets.length} ticket${tickets.length === 1 ? '' : 's'} in this queue`
+            : `${filteredTickets.length} of ${tickets.length} tickets shown`}
+        </p>
+      </div>
+      <p class="hidden text-[11px] font-medium text-gray-400 sm:block">Action required first</p>
+    </div>
+
+    <!-- Responsive ticket cards -->
+    <div class="mt-3 flex flex-col gap-3">
+      {#if loading}
+        {#each Array(3) as _}
+          <div class="animate-pulse rounded-xl border border-gray-100 p-4">
+            <div class="mb-3 h-3 w-24 rounded bg-gray-100"></div>
+            <div class="mb-2 h-4 w-2/3 rounded bg-gray-100"></div>
+            <div class="h-3 w-1/2 rounded bg-gray-100"></div>
+          </div>
+        {/each}
+      {:else if filteredTickets.length === 0}
+        <div class="flex flex-col items-center px-4 py-14 text-center">
+          <div class="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-gray-50 text-gray-400">
+            <Icons.Search size={21} />
+          </div>
+          <p class="text-[14px] font-semibold text-[#0B182A]">
+            {tickets.length === 0 ? 'Your queue is clear' : 'No matching tickets'}
+          </p>
+          <p class="mt-1 max-w-sm text-[12px] leading-relaxed text-gray-400">
+            {tickets.length === 0 ? 'New assignments will appear here when they are routed to you.' : 'Try clearing a filter or searching with a different term.'}
+          </p>
+        </div>
+      {:else}
+        {#each pagedTickets as t}
+          <article class="group relative overflow-hidden rounded-xl border border-gray-200 bg-white transition-all hover:border-gray-300 hover:shadow-md">
+            <span class="absolute inset-y-0 left-0 w-1 {priorityAccent(t.priority)}"></span>
+            <div class="p-4 pl-5 sm:p-5 sm:pl-6">
+              <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                <button type="button" onclick={() => openDetail(t)} class="min-w-0 flex-1 text-left">
+                  <div class="mb-2 flex flex-wrap items-center gap-2">
+                    <span class="text-[11px] font-bold tracking-[0.05em] text-[#E87D1F]">{t.ticketNumber || t.id.slice(0, 8)}</span>
+                    <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full {statusBadge(t.status)}">{statusLabel(t.status)}</span>
+                    <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full {priorityBadge(t.priority)}">{priorityLabel(t.priority)}</span>
+                    {#if t.escalationLevel}
+                      <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full {escalationBadge(t.escalationLevel)}">{t.escalationLevel} support</span>
+                    {/if}
                   </div>
-                  <p class="text-[13px] text-gray-400">No tickets assigned to you yet</p>
-                </div>
-              </td>
-            </tr>
-          {:else}
-            {#each pagedTickets as t}
-              <tr class="border-b border-gray-50 hover:bg-gray-50/60 transition-colors
-                         {normalizeStatus(t.status) === 'pending_validation' ? 'bg-purple-50/20' : ''}">
-                <td class="py-3 px-3 text-[13px] font-semibold text-[#E87D1F] whitespace-nowrap">
-                  {t.ticketNumber || t.id.slice(0, 8)}
-                </td>
-                <td class="py-3 px-3 text-[13px] text-gray-600 whitespace-nowrap">{projectName(t.projectId)}</td>
-                <td class="py-3 px-3">
-                  <p class="text-[13px] font-medium text-gray-800 max-w-[180px] truncate">{t.title}</p>
+                  <h3 class="truncate text-[15px] font-bold text-[#0B182A] transition-colors group-hover:text-[#18375f] sm:text-[16px]">{t.title}</h3>
                   {#if t.description}
-                    <p class="text-[11px] text-gray-400 max-w-[180px] truncate">{t.description}</p>
+                    <p class="mt-1 line-clamp-1 text-[12px] leading-relaxed text-gray-500">{t.description}</p>
                   {/if}
-                </td>
-                <td class="py-3 px-3 text-[12px] text-gray-600 max-w-[220px]">
-                  <span class="block truncate" title={ticketLocation(t)}>{ticketLocation(t)}</span>
-                </td>
-                <td class="py-3 px-3">
-                  <span class="text-[11px] font-semibold px-2.5 py-1 rounded-full {statusBadge(t.status)}">
-                    {statusLabel(t.status)}
-                  </span>
-                </td>
-                <td class="py-3 px-3">
-                  <span class="text-[11px] font-semibold px-2.5 py-1 rounded-full {priorityBadge(t.priority)}">
-                    {t.priority || '—'}
-                  </span>
-                </td>
-                <td class="py-3 px-3">
-                  {#if t.escalationLevel}
-                    <span class="text-[11px] font-semibold px-2.5 py-1 rounded-full {escalationBadge(t.escalationLevel)}">
-                      {t.escalationLevel}
+                  <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px] text-gray-500">
+                    <span class="inline-flex min-w-0 items-center gap-1.5">
+                      <Icons.Folder size={13} stroke="#9ca3af" />
+                      <span class="max-w-[210px] truncate">{projectName(t.projectId)}</span>
                     </span>
-                  {:else}
-                    <span class="text-[12px] text-gray-300">—</span>
-                  {/if}
-                </td>
-                <td class="py-3 px-3 text-[12px] text-gray-400 whitespace-nowrap">{fmtDate(t.createdAt)}</td>
-                <td class="py-3 px-3">
+                    <span class="inline-flex min-w-0 items-center gap-1.5">
+                      <Icons.MapPin size={13} stroke="#9ca3af" />
+                      <span class="max-w-[260px] truncate">{ticketLocation(t)}</span>
+                    </span>
+                    <span class="inline-flex items-center gap-1.5">
+                      <Icons.Clock size={13} stroke="#9ca3af" />
+                      Raised {fmtDate(t.createdAt)}
+                    </span>
+                  </div>
+                </button>
+
+                <div class="flex shrink-0 items-center justify-between gap-2 border-t border-gray-100 pt-3 xl:justify-end xl:border-0 xl:pt-0">
+                  <span class="mr-auto whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[10px] font-semibold xl:mr-2 {slaInfo(t).classes}">
+                    {slaInfo(t).label}
+                  </span>
+
                   <button
+                    type="button"
                     onclick={() => openDetail(t)}
-                    class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-[#0B182A] hover:bg-gray-100 transition-colors"
-                    aria-label="View details"
+                    class="inline-flex h-9 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-[11px] font-semibold text-gray-600 transition-colors hover:border-gray-300 hover:bg-gray-50"
                   >
-                    <Icons.Eye size={15} />
+                    <Icons.Eye size={14} />
+                    <span class="hidden sm:inline">Details</span>
                   </button>
-                </td>
-                <td class="py-3 px-3">
-                  {#if getTicketActions(t).length > 0}
+
+                  {#if primaryTicketAction(t)}
                     <button
-                      onclick={(e) => {
-                        e.stopPropagation();
+                      type="button"
+                      onclick={() => primaryTicketAction(t)?.onClick()}
+                      disabled={primaryTicketAction(t)?.disabled}
+                      class="h-9 whitespace-nowrap rounded-lg bg-[#0B182A] px-3.5 text-[11px] font-semibold text-white transition-colors hover:bg-[#18375f] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {primaryTicketAction(t)?.label}
+                    </button>
+                  {/if}
+
+                  {#if secondaryTicketActions(t).length > 0}
+                    <button
+                      type="button"
+                      onclick={(event) => {
+                        event.stopPropagation();
                         if (openDropdownId === t.id) { openDropdownId = null; return; }
-                        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                        const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
                         dropdownPos = { top: rect.bottom + 4, right: window.innerWidth - rect.right };
-                        dropdownActions = getTicketActions(t);
+                        dropdownActions = secondaryTicketActions(t);
                         openDropdownId = t.id;
                       }}
-                      class="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors cursor-pointer whitespace-nowrap"
+                      class="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:border-gray-300 hover:bg-gray-50 hover:text-[#0B182A]"
+                      aria-label="More ticket actions"
                     >
-                      Actions
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
                     </button>
-                  {:else}
-                    <span class="text-[12px] text-gray-300">—</span>
                   {/if}
-                </td>
-              </tr>
-            {/each}
-          {/if}
-        </tbody>
-      </table>
+                </div>
+              </div>
+            </div>
+          </article>
+        {/each}
+      {/if}
     </div>
+
     <Pagination
       currentPage={currentPage}
       totalPages={totalPages}
-      totalItems={tickets.length}
+      totalItems={filteredTickets.length}
       pageSize={PAGE_SIZE}
       itemLabel="tickets"
       loading={loading}
-      onchange={(p) => (currentPage = p)}
+      onchange={(page) => (currentPage = page)}
     />
-  </div>
+  </section>
 </div>
 
 <!-- ── Actions Dropdown (fixed to escape overflow-x-auto clipping) ─────── -->
@@ -1025,7 +1221,7 @@
           <div>
             <p class="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Priority</p>
             <span class="text-[11px] font-semibold px-2.5 py-1 rounded-full {priorityBadge(detailTicket.priority)}">
-              {detailTicket.priority || '—'}
+              {priorityLabel(detailTicket.priority)}
             </span>
           </div>
         </div>

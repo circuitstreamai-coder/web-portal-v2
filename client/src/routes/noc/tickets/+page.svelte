@@ -35,9 +35,17 @@
   let tickets = $state<Ticket[]>([]);
   let projects = $state<Project[]>([]);
   let loading = $state(true);
+  let refreshing = $state(false);
 
   // Tabs
   let activeTab = $state<"all" | "unassigned">("all");
+  let searchQuery = $state("");
+  let statusFilter = $state<
+    "all" | "attention" | "active" | "validation" | "closed"
+  >("all");
+  let priorityFilter = $state<"all" | "Critical" | "High" | "Medium" | "Low">(
+    "all",
+  );
 
   // Detail sidebar
   let detailTicket = $state<Ticket | null>(null);
@@ -160,6 +168,18 @@
     await primeClosureEligibility(fetchedTickets);
   }
 
+  async function refreshTickets() {
+    refreshing = true;
+    try {
+      await loadTickets();
+      toast.success("Ticket queue refreshed");
+    } catch {
+      toast.error("Failed to refresh tickets");
+    } finally {
+      refreshing = false;
+    }
+  }
+
   onMount(async () => {
     try {
       const [, fetchedProjects, fetchedCustomers, fetchedCategories] = await Promise.all([
@@ -193,15 +213,29 @@
 
   function switchTab(tab: "all" | "unassigned") {
     activeTab = tab;
+    statusFilter = "all";
   }
 
   // ── Assignment panel ──────────────────────────────────────────────────────
+
+  function assignmentChanged(): boolean {
+    if (!assignTarget) return false;
+    return (
+      assignForm.engineerId !== (assignTarget.assignedEngineerId ?? "") ||
+      assignForm.statePlannerId !== (assignTarget.statePlannerId ?? "")
+    );
+  }
+
+  function assigneeName(users: User[], id: string | null | undefined, fallback: string): string {
+    if (!id) return fallback;
+    return users.find((candidate) => candidate.id === id)?.name ?? fallback;
+  }
 
   async function openAssign(t: Ticket) {
     const tAny = t as any;
     assignTarget = t;
     assignForm = {
-      engineerId: tAny.engineerId ?? "",
+      engineerId: tAny.assignedEngineerId ?? "",
       statePlannerId: tAny.statePlannerId ?? "",
     };
     loadingAssignees = true;
@@ -229,6 +263,18 @@
       toast.error("Select at least one assignee");
       return;
     }
+
+    const currentEngineerId = assignTarget.assignedEngineerId ?? "";
+    const currentPlannerId = assignTarget.statePlannerId ?? "";
+    if (
+      assignForm.engineerId === currentEngineerId &&
+      assignForm.statePlannerId === currentPlannerId
+    ) {
+      toast.info("Select a different assignee to update this ticket");
+      return;
+    }
+
+    const isReassignment = Boolean(currentEngineerId && assignForm.engineerId !== currentEngineerId);
     assigning = true;
     try {
       const updated = await assignTicket(assignTarget.id, {
@@ -238,8 +284,9 @@
       tickets = tickets.map((t) =>
         t.id === updated.id ? { ...t, ...updated } : t,
       );
-      toast.success("Ticket assigned successfully");
+      toast.success(isReassignment ? "Engineer reassigned successfully" : "Ticket assignment updated");
       assignTarget = null;
+      invalidate("tickets");
     } catch (err) {
       toast.error(`Failed: ${(err as Error).message}`);
     } finally {
@@ -369,9 +416,14 @@
       assigned: "Assigned",
       accepted: "Accepted",
       in_progress: "In Progress",
+      on_hold: "On Hold",
+      pending_replacement: "Pending Replacement",
       pending_validation: "Pending Validation",
       resolved: "Resolved",
       closed: "Closed",
+      reopened: "Reopened",
+      escalated_l2: "Escalated L2",
+      escalated_l3: "Escalated L3",
       rejected: "Rejected",
       cancelled: "Cancelled",
     };
@@ -384,9 +436,14 @@
       assigned: "bg-indigo-50 text-indigo-600",
       accepted: "bg-teal-50 text-teal-600",
       in_progress: "bg-amber-50 text-amber-600",
+      on_hold: "bg-yellow-50 text-yellow-700",
+      pending_replacement: "bg-fuchsia-50 text-fuchsia-700",
       pending_validation: "bg-purple-50 text-purple-700",
       resolved: "bg-green-50 text-green-600",
       closed: "bg-gray-100 text-gray-500",
+      reopened: "bg-cyan-50 text-cyan-700",
+      escalated_l2: "bg-orange-50 text-orange-700",
+      escalated_l3: "bg-red-50 text-red-700",
       rejected: "bg-rose-50 text-rose-600",
       cancelled: "bg-red-50 text-red-500",
     };
@@ -409,6 +466,50 @@
     });
   }
 
+  function priorityLabel(priority: string): "Critical" | "High" | "Medium" | "Low" {
+    const normalized = priority?.toLowerCase();
+    if (normalized === "critical") return "Critical";
+    if (normalized === "high") return "High";
+    if (normalized === "medium") return "Medium";
+    return "Low";
+  }
+
+  function priorityAccent(priority: string): string {
+    const normalized = priority?.toLowerCase();
+    if (normalized === "critical") return "bg-red-700";
+    if (normalized === "high") return "bg-red-500";
+    if (normalized === "medium") return "bg-amber-400";
+    return "bg-emerald-500";
+  }
+
+  function ticketLocation(ticket: Ticket): string {
+    return [ticket.city, ticket.state].filter(Boolean).join(", ") || "Location not provided";
+  }
+
+  function slaInfo(ticket: Ticket): { label: string; classes: string } {
+    const status = normalizeStatus(ticket.status);
+    if (["closed", "resolved", "pending_validation"].includes(status)) {
+      return {
+        label: status === "closed" ? "Completed" : "Work complete",
+        classes: "bg-emerald-50 text-emerald-700",
+      };
+    }
+    if (!ticket.slaDeadline) {
+      return { label: "No SLA deadline", classes: "bg-gray-100 text-gray-500" };
+    }
+
+    const difference = new Date(ticket.slaDeadline).getTime() - Date.now();
+    const hours = Math.max(1, Math.ceil(Math.abs(difference) / 3_600_000));
+    const duration = hours >= 24 ? `${Math.ceil(hours / 24)}d` : `${hours}h`;
+    if (difference < 0) {
+      return { label: `${duration} overdue`, classes: "bg-red-50 text-red-700" };
+    }
+    if (hours <= 24) {
+      return { label: `${hours}h remaining`, classes: "bg-orange-50 text-orange-700" };
+    }
+    return { label: `${Math.ceil(hours / 24)}d remaining`, classes: "bg-gray-100 text-gray-600" };
+  }
+
   function canAct(t: Ticket) {
     return !["closed", "cancelled", "rejected"].includes(
       normalizeStatus(t.status),
@@ -416,11 +517,11 @@
   }
 
   function canAssign(t: Ticket) {
-    return ["open", "assigned"].includes(normalizeStatus(t.status));
+    return ["open", "assigned", "in_progress"].includes(normalizeStatus(t.status));
   }
 
   function canEscalate(t: Ticket) {
-    return !["closed", "cancelled", "rejected", "resolved"].includes(
+    return !["closed", "cancelled", "rejected", "resolved", "pending_validation"].includes(
       normalizeStatus(t.status),
     );
   }
@@ -614,406 +715,408 @@
     "text-[11px] font-semibold text-gray-500 uppercase tracking-wide";
   const errorClass = "text-[11px] text-red-500 mt-0.5";
 
-  // ── Pagination ─────────────────────────────────────────────────────────────
+  // ── Queue filters and pagination ───────────────────────────────────────────
   const PAGE_SIZE = 15;
-  let currentPageAll = $state(1);
-  let currentPageUnassigned = $state(1);
+  let currentPage = $state(1);
 
-  $effect(() => {
-    activeTab;
-    currentPageAll = 1;
-    currentPageUnassigned = 1;
+  const unassigned = $derived(
+    tickets.filter(
+      (ticket) =>
+        normalizeStatus(ticket.status) === "open" && !ticket.assignedEngineerId,
+    ),
+  );
+
+  const filteredTickets = $derived.by(() => {
+    const source = activeTab === "unassigned" ? unassigned : tickets;
+    const query = searchQuery.trim().toLowerCase();
+    const statusGroups: Record<typeof statusFilter, string[]> = {
+      all: [],
+      attention: ["open", "reopened", "escalated_l2", "escalated_l3"],
+      active: ["assigned", "accepted", "in_progress", "on_hold", "pending_replacement"],
+      validation: ["resolved", "pending_validation"],
+      closed: ["closed", "cancelled", "rejected"],
+    };
+
+    return source
+      .filter((ticket) => {
+        const normalizedStatus = normalizeStatus(ticket.status);
+        const matchesStatus =
+          statusFilter === "all" || statusGroups[statusFilter].includes(normalizedStatus);
+        const matchesPriority =
+          priorityFilter === "all" || priorityLabel(ticket.priority) === priorityFilter;
+        const matchesQuery =
+          !query ||
+          [
+            ticket.ticketNumber,
+            ticket.title,
+            ticket.description,
+            projectName(ticket.projectId),
+            categoryName(ticket.categoryId),
+            ticketLocation(ticket),
+          ].some((value) => value?.toLowerCase().includes(query));
+        return matchesStatus && matchesPriority && matchesQuery;
+      })
+      .sort((left, right) => {
+        const workflowRank = (ticket: Ticket) => {
+          const status = normalizeStatus(ticket.status);
+          if (["open", "reopened", "escalated_l2", "escalated_l3"].includes(status)) return 0;
+          if (status === "resolved" || status === "pending_validation") return 1;
+          if (["assigned", "accepted", "in_progress", "on_hold"].includes(status)) return 2;
+          return 3;
+        };
+        const workflowDifference = workflowRank(left) - workflowRank(right);
+        if (workflowDifference !== 0) return workflowDifference;
+        const priorityRank: Record<string, number> = {
+          Critical: 0,
+          High: 1,
+          Medium: 2,
+          Low: 3,
+        };
+        const priorityDifference =
+          (priorityRank[priorityLabel(left.priority)] ?? 4) -
+          (priorityRank[priorityLabel(right.priority)] ?? 4);
+        if (priorityDifference !== 0) return priorityDifference;
+        return (
+          new Date(left.slaDeadline || left.createdAt).getTime() -
+          new Date(right.slaDeadline || right.createdAt).getTime()
+        );
+      });
   });
 
   const pagedTickets = $derived(
-    tickets.slice((currentPageAll - 1) * PAGE_SIZE, currentPageAll * PAGE_SIZE),
+    filteredTickets.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
   );
-  const totalPagesAll = $derived(
-    Math.max(1, Math.ceil(tickets.length / PAGE_SIZE)),
+  const totalPages = $derived(
+    Math.max(1, Math.ceil(filteredTickets.length / PAGE_SIZE)),
   );
 
-  const unassigned = $derived(
-    tickets.filter((t) => normalizeStatus(t.status) === "open"),
-  );
-  const pagedUnassigned = $derived(
-    unassigned.slice(
-      (currentPageUnassigned - 1) * PAGE_SIZE,
-      currentPageUnassigned * PAGE_SIZE,
-    ),
-  );
-  const totalPagesUnassigned = $derived(
-    Math.max(1, Math.ceil(unassigned.length / PAGE_SIZE)),
-  );
+  $effect(() => {
+    activeTab;
+    searchQuery;
+    statusFilter;
+    priorityFilter;
+    currentPage = 1;
+  });
 </script>
 
 <svelte:head><title>Tickets · NOC · Innoserve Techsol</title></svelte:head>
 
+
 <div class="flex flex-col gap-5">
-  <!-- Stats -->
-  <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
-    {#each [{ label: "Total", value: tickets.length, color: "text-[#0B182A]" }, { label: "Unassigned", value: tickets.filter((t) => normalizeStatus(t.status) === "open").length, color: "text-orange-600" }, { label: "Pending Validation", value: tickets.filter((t) => normalizeStatus(t.status) === "pending_validation").length, color: "text-purple-700" }, { label: "Open / In Progress", value: tickets.filter( (t) => ["open", "in_progress"].includes(normalizeStatus(t.status)), ).length, color: "text-amber-600" }, { label: "Closed", value: tickets.filter((t) => normalizeStatus(t.status) === "closed").length, color: "text-gray-500" }] as stat}
-      <div class="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-        <p class="text-[12px] text-gray-400 mb-1">{stat.label}</p>
-        <p class="text-[24px] font-bold {stat.color}">
-          {loading ? "—" : stat.value}
+  <!-- NOC queue heading -->
+  <section class="relative overflow-hidden rounded-2xl bg-[#0B182A] px-5 py-5 text-white shadow-sm sm:px-7 sm:py-6">
+    <div class="absolute -right-16 -top-20 h-52 w-52 rounded-full bg-[#E87D1F]/15 blur-2xl"></div>
+    <div class="relative flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <div class="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/50">
+          <span class="h-2 w-2 rounded-full bg-[#E87D1F]"></span>
+          Network operations control
+        </div>
+        <h1 class="text-[24px] font-bold tracking-tight sm:text-[28px]">Ticket command centre</h1>
+        <p class="mt-1 max-w-xl text-[13px] leading-relaxed text-white/60 sm:text-[14px]">
+          Route incoming work, monitor SLA exposure, and validate completed field activity.
         </p>
       </div>
+      <div class="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onclick={refreshTickets}
+          disabled={refreshing}
+          class="inline-flex h-10 items-center gap-2 rounded-lg border border-white/15 bg-white/10 px-3.5 text-[12px] font-semibold text-white transition-colors hover:bg-white/15 disabled:opacity-60"
+        >
+          <svg class={refreshing ? "animate-spin" : ""} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          {refreshing ? "Refreshing…" : "Refresh"}
+        </button>
+        <button
+          type="button"
+          onclick={openCreate}
+          class="inline-flex h-10 items-center gap-2 rounded-lg bg-[#E87D1F] px-4 text-[12px] font-semibold text-white transition-colors hover:bg-orange-600"
+        >
+          <Icons.Plus size={14} strokeWidth={2.5} />
+          Log ticket
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Operational summary -->
+  <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+    {#each [
+      {
+        label: "Needs assignment",
+        value: unassigned.length,
+        color: "text-[#E87D1F]",
+        bar: "bg-[#E87D1F]",
+        tab: "unassigned" as const,
+        filter: "all" as const,
+      },
+      {
+        label: "Active work",
+        value: tickets.filter((ticket) => ["assigned", "accepted", "in_progress", "on_hold", "pending_replacement"].includes(normalizeStatus(ticket.status))).length,
+        color: "text-amber-700",
+        bar: "bg-amber-500",
+        tab: "all" as const,
+        filter: "active" as const,
+      },
+      {
+        label: "Awaiting review",
+        value: tickets.filter((ticket) => ["resolved", "pending_validation"].includes(normalizeStatus(ticket.status))).length,
+        color: "text-purple-700",
+        bar: "bg-purple-500",
+        tab: "all" as const,
+        filter: "validation" as const,
+      },
+      {
+        label: "Closed",
+        value: tickets.filter((ticket) => normalizeStatus(ticket.status) === "closed").length,
+        color: "text-emerald-700",
+        bar: "bg-emerald-500",
+        tab: "all" as const,
+        filter: "closed" as const,
+      },
+    ] as stat}
+      <button
+        type="button"
+        onclick={() => {
+          activeTab = stat.tab;
+          statusFilter = stat.filter;
+        }}
+        class="group relative overflow-hidden rounded-xl border border-gray-100 bg-white p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-gray-200 hover:shadow-md"
+      >
+        <span class="absolute inset-y-0 left-0 w-1 {stat.bar}"></span>
+        <p class="pl-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-gray-400">{stat.label}</p>
+        <div class="mt-1 flex items-end justify-between pl-1">
+          <p class="text-[26px] font-bold leading-none {stat.color}">{loading ? "—" : stat.value}</p>
+          <span class="text-[10px] font-medium text-gray-300 transition-colors group-hover:text-gray-500">View queue</span>
+        </div>
+      </button>
     {/each}
   </div>
 
-  <!-- Table card -->
-  <div class="bg-white rounded-2xl shadow">
-    <!-- Card header -->
-    <div class="flex items-center justify-between gap-3 px-6 pt-5 pb-0">
-      <!-- Tab bar -->
-      <div class="flex items-center gap-0.5">
+  <!-- Queue workspace -->
+  <section class="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
+    <div class="flex flex-col gap-4 border-b border-gray-100 pb-4 lg:flex-row lg:items-center lg:justify-between">
+      <div class="inline-flex w-fit max-w-full gap-1 rounded-xl bg-gray-100 p-1">
         <button
+          type="button"
           onclick={() => switchTab("all")}
-          class="px-4 py-2.5 text-[13px] font-semibold rounded-t-lg border-b-2 transition-colors cursor-pointer
-                 {activeTab === 'all'
-            ? 'border-[#E87D1F] text-[#E87D1F] bg-[#E87D1F]/5'
-            : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}"
+          class="flex items-center gap-2 whitespace-nowrap rounded-lg px-3.5 py-2 text-[12px] font-semibold transition-colors sm:px-4
+            {activeTab === "all" ? "bg-white text-[#0B182A] shadow-sm" : "text-gray-500 hover:text-[#0B182A]"}"
         >
-          All Tickets
+          All tickets
+          <span class="rounded-full px-1.5 py-0.5 text-[10px] {activeTab === "all" ? "bg-gray-100 text-gray-600" : "bg-gray-200 text-gray-500"}">
+            {loading ? "…" : tickets.length}
+          </span>
         </button>
         <button
+          type="button"
           onclick={() => switchTab("unassigned")}
-          class="flex items-center gap-2 px-4 py-2.5 text-[13px] font-semibold rounded-t-lg border-b-2 transition-colors cursor-pointer
-                 {activeTab === 'unassigned'
-            ? 'border-[#E87D1F] text-[#E87D1F] bg-[#E87D1F]/5'
-            : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}"
+          class="flex items-center gap-2 whitespace-nowrap rounded-lg px-3.5 py-2 text-[12px] font-semibold transition-colors sm:px-4
+            {activeTab === "unassigned" ? "bg-white text-[#0B182A] shadow-sm" : "text-gray-500 hover:text-[#0B182A]"}"
         >
-          Unassigned
-          <span
-            class="px-2 py-0.5 rounded-full text-[10px] font-bold
-                       {activeTab === 'unassigned'
-              ? 'bg-orange-100 text-orange-700'
-              : 'bg-gray-100 text-gray-500'}"
-          >
-            {activeTab === "unassigned"
-              ? unassigned.length
-              : tickets.filter((t) => normalizeStatus(t.status) === "open")
-                  .length}
+          Needs assignment
+          <span class="rounded-full px-1.5 py-0.5 text-[10px] {activeTab === "unassigned" ? "bg-orange-100 text-orange-700" : "bg-gray-200 text-gray-500"}">
+            {loading ? "…" : unassigned.length}
           </span>
         </button>
       </div>
-
-      <button
-        onclick={openCreate}
-        class="flex items-center gap-1.5 px-4 py-2 bg-[#E87D1F] hover:bg-[#E87D1F]/90 text-white text-[13px] font-semibold rounded-lg cursor-pointer border-none transition-colors"
-      >
-        <Icons.Plus size={14} strokeWidth={2.5} />
-        Log Ticket Manually
-      </button>
+      <p class="text-[11px] font-medium text-gray-400">
+        {#if filteredTickets.length === (activeTab === "unassigned" ? unassigned.length : tickets.length)}
+          {filteredTickets.length} ticket{filteredTickets.length === 1 ? "" : "s"} in this queue
+        {:else}
+          {filteredTickets.length} matching tickets
+        {/if}
+      </p>
     </div>
 
-    <div class="border-t border-gray-100 mt-0 px-6 py-4">
-      <!-- ── All Tickets Tab ─────────────────────────────────────────────── -->
-      {#if activeTab === "all"}
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm border-collapse">
-            <thead>
-              <tr class="border-b border-gray-100">
-                {#each ["TICKET", "PROJECT", "CATEGORY", "ISSUE", "STATUS", "PRIORITY", "ESCALATION", "DATE", "ACTIONS"] as col}
-                  <th
-                    class="text-left text-[11px] font-semibold text-gray-400 tracking-wide py-3 px-3 whitespace-nowrap"
-                    >{col}</th
-                  >
-                {/each}
-              </tr>
-            </thead>
-            <tbody>
-              {#if loading}
-                <tr>
-                  <td
-                    colspan="9"
-                    class="py-12 text-center text-[13px] text-gray-400"
-                  >
-                    <div class="flex items-center justify-center gap-2">
-                      <div
-                        class="w-4 h-4 border-2 border-gray-200 border-t-[#0B182A] rounded-full animate-spin"
-                      ></div>
-                      Loading…
-                    </div>
-                  </td>
-                </tr>
-              {:else if tickets.length === 0}
-                <tr>
-                  <td colspan="9" class="py-16 text-center">
-                    <div class="flex flex-col items-center gap-2">
-                      <div
-                        class="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center"
-                      >
-                        <Icons.Ticket size={22} stroke="#9ca3af" />
-                      </div>
-                      <p class="text-[13px] text-gray-400">No tickets found</p>
-                    </div>
-                  </td>
-                </tr>
-              {:else}
-                {#each pagedTickets as t}
-                  <tr
-                    class="border-b border-gray-50 hover:bg-gray-50/60 transition-colors cursor-pointer
-                             {normalizeStatus(t.status) === 'pending_validation'
-                      ? 'bg-purple-50/30'
-                      : ''}
-                             {normalizeStatus(t.status) === 'open'
-                      ? 'bg-orange-50/20'
-                      : ''}"
-                    onclick={() => openDetail(t)}
-                  >
-                    <td
-                      class="py-3 px-3 text-[13px] font-semibold text-[#E87D1F] whitespace-nowrap"
-                    >
-                      {t.ticketNumber || t.id.slice(0, 8)}
-                    </td>
-                    <td
-                      class="py-3 px-3 text-[13px] text-gray-600 whitespace-nowrap"
-                      >{projectName(t.projectId)}</td
-                    >
-                    <td class="py-3 px-3 text-[13px] text-gray-600"
-                      >{categoryName((t as any).categoryId)}</td
-                    >
-                    <td class="py-3 px-3">
-                      <p
-                        class="text-[13px] font-medium text-gray-800 max-w-45 truncate"
-                      >
-                        {t.title}
-                      </p>
-                      {#if t.description}
-                        <p class="text-[11px] text-gray-400 max-w-45 truncate">
-                          {t.description}
-                        </p>
-                      {/if}
-                    </td>
-                    <td class="py-3 px-3">
-                      <span
-                        class="text-[11px] font-semibold px-2.5 py-1 rounded-full {statusBadge(
-                          t.status,
-                        )}"
-                      >
-                        {displayStatus(t.status)}
-                      </span>
-                    </td>
-                    <td class="py-3 px-3">
-                      <span
-                        class="text-[11px] font-semibold px-2.5 py-1 rounded-full {priorityBadge(
-                          t.priority,
-                        )}"
-                      >
-                        {t.priority || "—"}
-                      </span>
-                    </td>
-                    <td class="py-3 px-3">
-                      {#if t.escalationLevel}
-                        <span
-                          class="text-[11px] font-semibold px-2.5 py-1 rounded-full
-                                     {t.escalationLevel === 'L3'
-                            ? 'bg-red-50 text-red-600'
-                            : 'bg-orange-50 text-orange-600'}"
-                        >
-                          {t.escalationLevel}
-                        </span>
-                      {:else}
-                        <span class="text-[12px] text-gray-300">—</span>
-                      {/if}
-                    </td>
-                    <td
-                      class="py-3 px-3 text-[12px] text-gray-400 whitespace-nowrap"
-                      >{fmtDate(t.createdAt)}</td
-                    >
-                    <td class="py-3 px-3" onclick={(e) => e.stopPropagation()}>
-                      {#if canAct(t)}
-                        <div class="flex gap-1.5 flex-wrap">
-                          {#if canValidateResolution(t)}
-                            <button
-                              onclick={() => handleValidateResolution(t)}
-                              disabled={validatingTicketId === t.id ||
-                                loadingClosureEligibility[t.id] ||
-                                closureBlocked(t.id)}
-                              class="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors cursor-pointer whitespace-nowrap disabled:opacity-60 disabled:cursor-not-allowed"
-                            >
-                              <Icons.CheckCircle size={12} />
-                              {validatingTicketId === t.id
-                                ? "Validating…"
-                                : "Validate"}
-                            </button>
-                          {/if}
-                        </div>
-                        {#if loadingClosureEligibility[t.id]}
-                          <p class="mt-1 text-[11px] text-gray-400">
-                            Checking closure eligibility…
-                          </p>
-                        {:else if closureBlocked(t.id)}
-                          <p
-                            class="mt-1 max-w-[260px] text-[11px] text-red-600"
-                          >
-                            {closureReasons(t.id).join(" • ")}
-                          </p>
-                        {/if}
-                      {:else}
-                        <span class="text-[12px] text-gray-400"
-                          >{displayStatus(t.status)}</span
-                        >
-                      {/if}
-                    </td>
-                  </tr>
-                {/each}
-              {/if}
-            </tbody>
-          </table>
-        </div>
-        <Pagination
-          currentPage={currentPageAll}
-          totalPages={totalPagesAll}
-          totalItems={tickets.length}
-          pageSize={PAGE_SIZE}
-          itemLabel="tickets"
-          {loading}
-          onchange={(p) => (currentPageAll = p)}
+    <div class="mt-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+      <div class="relative min-w-0 flex-1 xl:max-w-md">
+        <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-gray-400">
+          <Icons.Search size={15} />
+        </span>
+        <input
+          bind:value={searchQuery}
+          type="search"
+          placeholder="Search ticket, project, category, or location"
+          aria-label="Search tickets"
+          class="h-10 w-full rounded-lg border border-gray-200 bg-gray-50/70 pl-9 pr-3 text-[13px] text-gray-700 outline-none transition-colors placeholder:text-gray-400 focus:border-[#0B182A] focus:bg-white"
         />
+      </div>
+      <div class="flex flex-col gap-2 sm:flex-row">
+        <select bind:value={statusFilter} aria-label="Filter by workflow stage" class="h-10 rounded-lg border border-gray-200 bg-white px-3 text-[12px] font-medium text-gray-600 outline-none focus:border-[#0B182A]">
+          <option value="all">All workflow stages</option>
+          <option value="attention">Needs attention</option>
+          <option value="active">Active work</option>
+          <option value="validation">Awaiting review</option>
+          <option value="closed">Closed</option>
+        </select>
+        <select bind:value={priorityFilter} aria-label="Filter by priority" class="h-10 rounded-lg border border-gray-200 bg-white px-3 text-[12px] font-medium text-gray-600 outline-none focus:border-[#0B182A]">
+          <option value="all">All priorities</option>
+          <option value="Critical">Critical priority</option>
+          <option value="High">High priority</option>
+          <option value="Medium">Medium priority</option>
+          <option value="Low">Low priority</option>
+        </select>
+        {#if searchQuery || statusFilter !== "all" || priorityFilter !== "all"}
+          <button
+            type="button"
+            onclick={() => {
+              searchQuery = "";
+              statusFilter = "all";
+              priorityFilter = "all";
+            }}
+            class="h-10 rounded-lg px-3 text-[12px] font-semibold text-gray-500 transition-colors hover:bg-gray-100 hover:text-[#0B182A]"
+          >
+            Clear filters
+          </button>
+        {/if}
+      </div>
+    </div>
 
-        <!-- ── Unassigned Tab ──────────────────────────────────────────────── -->
-      {:else}
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm border-collapse">
-            <thead>
-              <tr class="border-b border-gray-100">
-                {#each ["TICKET", "PROJECT", "CATEGORY", "PRIORITY", "RAISED AT", "SLA DEADLINE", "ACTIONS"] as col}
-                  <th
-                    class="text-left text-[11px] font-semibold text-gray-400 tracking-wide py-3 px-3 whitespace-nowrap"
-                    >{col}</th
-                  >
-                {/each}
-              </tr>
-            </thead>
-            <tbody>
-              {#if loading}
-                <tr>
-                  <td
-                    colspan="7"
-                    class="py-12 text-center text-[13px] text-gray-400"
-                  >
-                    <div class="flex items-center justify-center gap-2">
-                      <div
-                        class="w-4 h-4 border-2 border-gray-200 border-t-orange-500 rounded-full animate-spin"
-                      ></div>
-                      Loading unassigned tickets…
-                    </div>
-                  </td>
-                </tr>
-              {:else if unassigned.length === 0}
-                <tr>
-                  <td colspan="7" class="py-16 text-center">
-                    <div class="flex flex-col items-center gap-2">
-                      <div
-                        class="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center"
-                      >
-                        <Icons.CheckCircle size={22} stroke="#16a34a" />
-                      </div>
-                      <p class="text-[13px] text-gray-400">
-                        All tickets are assigned
-                      </p>
-                    </div>
-                  </td>
-                </tr>
-              {:else}
-                {#each pagedUnassigned as t}
-                  {@const tAny = t as any}
-                  <tr
-                    class="border-b border-orange-50 hover:bg-orange-50/40 transition-colors bg-orange-50/20 cursor-pointer"
-                    onclick={() => openDetail(t)}
-                  >
-                    <td class="py-3 px-3">
-                      <p
-                        class="text-[13px] font-semibold text-[#E87D1F] whitespace-nowrap"
-                      >
-                        {t.ticketNumber || t.id.slice(0, 8)}
-                      </p>
-                      <p class="text-[11px] text-gray-400 max-w-40 truncate">
-                        {t.title}
-                      </p>
-                    </td>
-                    <td
-                      class="py-3 px-3 text-[13px] text-gray-600 whitespace-nowrap"
-                      >{projectName(t.projectId)}</td
-                    >
-                    <td class="py-3 px-3 text-[13px] text-gray-600"
-                      >{categoryName(tAny.categoryId)}</td
-                    >
-                    <td class="py-3 px-3">
-                      <span
-                        class="text-[11px] font-semibold px-2.5 py-1 rounded-full {priorityBadge(
-                          t.priority,
-                        )}"
-                      >
-                        {t.priority || "—"}
-                      </span>
-                    </td>
-                    <td
-                      class="py-3 px-3 text-[12px] text-gray-400 whitespace-nowrap"
-                      >{fmtDate(t.createdAt)}</td
-                    >
-                    <td class="py-3 px-3">
-                      {#if tAny.slaDeadline}
-                        {@const overdue =
-                          new Date(tAny.slaDeadline) < new Date()}
-                        <span
-                          class="text-[12px] font-semibold whitespace-nowrap {overdue
-                            ? 'text-red-600'
-                            : 'text-gray-600'}"
-                        >
-                          {fmtDate(tAny.slaDeadline)}
-                          {#if overdue}<span
-                              class="ml-1 text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full"
-                              >Overdue</span
-                            >{/if}
-                        </span>
-                      {:else}
-                        <span class="text-[12px] text-gray-400">—</span>
-                      {/if}
-                    </td>
-                    <td class="py-3 px-3" onclick={(e) => e.stopPropagation()}>
-                      <button
-                        onclick={() => openAssign(t)}
-                        class="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold rounded-lg bg-orange-600 text-white hover:bg-orange-700 transition-colors cursor-pointer whitespace-nowrap"
-                      >
-                        <svg
-                          width="11"
-                          height="11"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2"
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          ><path
-                            d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"
-                          /><circle cx="12" cy="7" r="4" /></svg
-                        >
-                        Assign Now
-                      </button>
-                    </td>
-                  </tr>
-                {/each}
-              {/if}
-            </tbody>
-          </table>
+    <div class="mt-5 flex items-start justify-between">
+      <div>
+        <h2 class="text-[15px] font-bold text-[#0B182A]">
+          {activeTab === "unassigned" ? "Unassigned dispatch queue" : "Operations queue"}
+        </h2>
+        <p class="mt-0.5 text-[11px] text-gray-400">Sorted by workflow priority, urgency, and SLA deadline.</p>
+      </div>
+      <span class="hidden rounded-lg bg-gray-50 px-2.5 py-1.5 text-[10px] font-semibold text-gray-400 sm:block">Highest priority first</span>
+    </div>
+
+    <!-- Responsive ticket cards -->
+    <div class="mt-3 flex flex-col gap-3">
+      {#if loading}
+        {#each Array(4) as _}
+          <div class="animate-pulse rounded-xl border border-gray-100 p-5">
+            <div class="mb-3 h-3 w-24 rounded bg-gray-100"></div>
+            <div class="mb-2 h-4 w-2/3 rounded bg-gray-100"></div>
+            <div class="h-3 w-1/2 rounded bg-gray-100"></div>
+          </div>
+        {/each}
+      {:else if filteredTickets.length === 0}
+        <div class="flex flex-col items-center px-4 py-14 text-center">
+          <div class="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-gray-50 text-gray-400">
+            {#if activeTab === "unassigned" && !searchQuery}
+              <Icons.CheckCircle size={21} />
+            {:else}
+              <Icons.Search size={21} />
+            {/if}
+          </div>
+          <p class="text-[14px] font-semibold text-[#0B182A]">
+            {activeTab === "unassigned" && unassigned.length === 0 ? "Everything is assigned" : "No matching tickets"}
+          </p>
+          <p class="mt-1 max-w-sm text-[12px] leading-relaxed text-gray-400">
+            {activeTab === "unassigned" && unassigned.length === 0
+              ? "New unassigned requests will appear here for dispatch."
+              : "Try clearing a filter or searching with a different term."}
+          </p>
         </div>
-        <Pagination
-          currentPage={currentPageUnassigned}
-          totalPages={totalPagesUnassigned}
-          totalItems={unassigned.length}
-          pageSize={PAGE_SIZE}
-          itemLabel="tickets"
-          loading={loading}
-          onchange={(p) => (currentPageUnassigned = p)}
-        />
+      {:else}
+        {#each pagedTickets as ticket}
+          {@const normalizedStatus = normalizeStatus(ticket.status)}
+          <article class="group relative overflow-hidden rounded-xl border border-gray-200 bg-white transition-all hover:border-gray-300 hover:shadow-md">
+            <span class="absolute inset-y-0 left-0 w-1 {priorityAccent(ticket.priority)}"></span>
+            <div class="p-4 pl-5 sm:p-5 sm:pl-6">
+              <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                <button type="button" onclick={() => openDetail(ticket)} class="min-w-0 flex-1 text-left">
+                  <div class="mb-2 flex flex-wrap items-center gap-2">
+                    <span class="text-[11px] font-bold tracking-[0.05em] text-[#E87D1F]">{ticket.ticketNumber || ticket.id.slice(0, 8)}</span>
+                    <span class="rounded-full px-2 py-0.5 text-[10px] font-semibold {statusBadge(ticket.status)}">{displayStatus(ticket.status)}</span>
+                    <span class="rounded-full px-2 py-0.5 text-[10px] font-semibold {priorityBadge(ticket.priority)}">{priorityLabel(ticket.priority)}</span>
+                    {#if ticket.escalationLevel}
+                      <span class="rounded-full px-2 py-0.5 text-[10px] font-semibold {ticket.escalationLevel === "L3" ? "bg-red-50 text-red-600" : "bg-orange-50 text-orange-600"}">
+                        {ticket.escalationLevel} support
+                      </span>
+                    {/if}
+                  </div>
+                  <h3 class="truncate text-[15px] font-bold text-[#0B182A] transition-colors group-hover:text-[#18375f] sm:text-[16px]">{ticket.title}</h3>
+                  {#if ticket.description}
+                    <p class="mt-1 line-clamp-1 text-[12px] leading-relaxed text-gray-500">{ticket.description}</p>
+                  {/if}
+                  <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px] text-gray-500">
+                    <span class="inline-flex min-w-0 items-center gap-1.5">
+                      <Icons.Folder size={13} stroke="#9ca3af" />
+                      <span class="max-w-45 truncate">{projectName(ticket.projectId)}</span>
+                    </span>
+                    <span class="inline-flex min-w-0 items-center gap-1.5">
+                      <Icons.Ticket size={13} stroke="#9ca3af" />
+                      <span class="max-w-40 truncate">{categoryName(ticket.categoryId)}</span>
+                    </span>
+                    <span class="inline-flex min-w-0 items-center gap-1.5">
+                      <Icons.MapPin size={13} stroke="#9ca3af" />
+                      <span class="max-w-48 truncate">{ticketLocation(ticket)}</span>
+                    </span>
+                    <span class="inline-flex items-center gap-1.5">
+                      <Icons.Clock size={13} stroke="#9ca3af" />
+                      Raised {fmtDate(ticket.createdAt)}
+                    </span>
+                  </div>
+                  <div class="mt-3 flex flex-wrap items-center gap-2">
+                    <span class="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[10px] font-semibold {ticket.assignedEngineerId ? "bg-indigo-50 text-indigo-700" : "bg-orange-50 text-orange-700"}">
+                      <Icons.Person size={12} />
+                      {ticket.assignedEngineerId ? "Engineer assigned" : "Engineer unassigned"}
+                    </span>
+                    {#if normalizedStatus === "resolved" || normalizedStatus === "pending_validation"}
+                      {#if loadingClosureEligibility[ticket.id]}
+                        <span class="text-[10px] font-medium text-gray-400">Checking closure readiness…</span>
+                      {:else if closureBlocked(ticket.id)}
+                        <span class="text-[10px] font-semibold text-red-600">Closure requirements incomplete</span>
+                      {:else}
+                        <span class="text-[10px] font-semibold text-emerald-600">Ready for review</span>
+                      {/if}
+                    {/if}
+                  </div>
+                </button>
+
+                <div class="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-gray-100 pt-3 xl:max-w-96 xl:border-0 xl:pt-0">
+                  <span class="mr-auto whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[10px] font-semibold xl:mr-1 {slaInfo(ticket).classes}">{slaInfo(ticket).label}</span>
+                  <button type="button" onclick={() => openDetail(ticket)} class="inline-flex h-9 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-[11px] font-semibold text-gray-600 transition-colors hover:border-gray-300 hover:bg-gray-50">
+                    <Icons.Eye size={14} />
+                    <span class="hidden sm:inline">Details</span>
+                  </button>
+                  {#if canAssign(ticket)}
+                    <button type="button" onclick={() => openAssign(ticket)} class="h-9 whitespace-nowrap rounded-lg bg-[#E87D1F] px-3.5 text-[11px] font-semibold text-white transition-colors hover:bg-orange-600">
+                      {ticket.assignedEngineerId ? "Reassign" : "Assign engineer"}
+                    </button>
+                  {/if}
+                  {#if canValidateResolution(ticket)}
+                    <button
+                      type="button"
+                      onclick={() => handleValidateResolution(ticket)}
+                      disabled={validatingTicketId === ticket.id || loadingClosureEligibility[ticket.id] || closureBlocked(ticket.id)}
+                      class="h-9 whitespace-nowrap rounded-lg bg-purple-600 px-3.5 text-[11px] font-semibold text-white transition-colors hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {validatingTicketId === ticket.id ? "Validating…" : "Validate resolution"}
+                    </button>
+                  {:else if normalizedStatus === "pending_validation"}
+                    <button type="button" onclick={() => openApprove(ticket)} class="h-9 whitespace-nowrap rounded-lg bg-emerald-600 px-3.5 text-[11px] font-semibold text-white transition-colors hover:bg-emerald-700">
+                      Review & close
+                    </button>
+                  {/if}
+                  {#if canEscalate(ticket)}
+                    <button type="button" onclick={() => openEscalate(ticket)} class="h-9 whitespace-nowrap rounded-lg border border-gray-200 px-3 text-[11px] font-semibold text-gray-500 transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600">
+                      Escalate
+                    </button>
+                  {/if}
+                </div>
+              </div>
+            </div>
+          </article>
+        {/each}
       {/if}
     </div>
-  </div>
-</div>
 
+    <Pagination
+      currentPage={currentPage}
+      totalPages={totalPages}
+      totalItems={filteredTickets.length}
+      pageSize={PAGE_SIZE}
+      itemLabel="tickets"
+      {loading}
+      onchange={(page) => (currentPage = page)}
+    />
+  </section>
+</div>
 <!-- ── Ticket Detail Sidebar ───────────────────────────────────────────────── -->
 {#if detailTicket}
   {@const dt = detailTicket as any}
@@ -1146,7 +1249,18 @@
 
         <!-- Assignees -->
         <div>
-          <p class="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Assignees</p>
+          <div class="mb-2 flex items-center justify-between gap-3">
+            <p class="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Assignees</p>
+            {#if canAssign(detailTicket)}
+              <button
+                type="button"
+                onclick={() => { const ticket = detailTicket; detailTicket = null; if (ticket) void openAssign(ticket); }}
+                class="text-[11px] font-semibold text-orange-600 hover:text-orange-700"
+              >
+                {detailTicket.assignedEngineerId ? "Reassign engineer" : "Assign engineer"}
+              </button>
+            {/if}
+          </div>
           {#if loadingDetailUsers}
             <div class="flex items-center gap-2 text-[13px] text-gray-400 py-2">
               <div class="w-3.5 h-3.5 border-2 border-gray-200 border-t-orange-500 rounded-full animate-spin"></div>
@@ -1204,7 +1318,7 @@
             {assignTarget.ticketNumber || assignTarget.id.slice(0, 8)}
           </p>
           <h2 class="text-[15px] font-semibold text-[#0B182A]">
-            Assign Ticket
+            {assignTarget.assignedEngineerId ? "Reassign Engineer" : "Assign Ticket"}
           </h2>
           <p class="text-[12px] text-gray-400 mt-0.5 max-w-70 truncate">
             {assignTarget.title}
@@ -1237,31 +1351,31 @@
       <!-- Body -->
       <div class="px-6 py-5 flex flex-col gap-5 overflow-y-auto">
         <!-- Current assignees (if any) -->
-        {#if (assignTarget as any).engineerName || (assignTarget as any).statePlannerName}
+        {#if assignTarget.assignedEngineerId || assignTarget.statePlannerId}
           <div class="px-4 py-3 rounded-xl bg-blue-50 border border-blue-100">
             <p class="text-[11px] font-semibold text-blue-700 mb-2">
               Current Assignees
             </p>
             <div class="flex flex-col gap-1">
-              {#if (assignTarget as any).engineerName}
+              {#if assignTarget.assignedEngineerId}
                 <div class="flex items-center gap-2">
                   <span
                     class="text-[10px] font-semibold text-blue-500 uppercase tracking-wide w-20 shrink-0"
-                    >Engineer</span
+                  >Engineer</span
                   >
                   <span class="text-[13px] text-blue-800 font-medium"
-                    >{(assignTarget as any).engineerName}</span
+                    >{assigneeName(assignEngineers, assignTarget.assignedEngineerId, loadingAssignees ? "Loading…" : "Current engineer")}</span
                   >
                 </div>
               {/if}
-              {#if (assignTarget as any).statePlannerName}
+              {#if assignTarget.statePlannerId}
                 <div class="flex items-center gap-2">
                   <span
                     class="text-[10px] font-semibold text-blue-500 uppercase tracking-wide w-20 shrink-0"
-                    >Planner</span
+                  >Planner</span
                   >
                   <span class="text-[13px] text-blue-800 font-medium"
-                    >{(assignTarget as any).statePlannerName}</span
+                    >{assigneeName(assignPlanners, assignTarget.statePlannerId, loadingAssignees ? "Loading…" : "Current planner")}</span
                   >
                 </div>
               {/if}
@@ -1290,7 +1404,7 @@
               </div>
             {:else}
               <select class={fieldClass} bind:value={assignForm.statePlannerId}>
-                <option value="">— None —</option>
+                {#if !assignTarget.statePlannerId}<option value="">— None —</option>{/if}
                 {#each assignPlanners as p}
                   <option value={p.id}>{p.name}</option>
                 {/each}
@@ -1309,7 +1423,7 @@
               </div>
             {:else}
               <select class={fieldClass} bind:value={assignForm.engineerId}>
-                <option value="">— None —</option>
+                {#if !assignTarget.assignedEngineerId}<option value="">— None —</option>{/if}
                 {#each assignEngineers as e}
                   <option value={e.id}>{e.name}</option>
                 {/each}
@@ -1331,10 +1445,10 @@
         </button>
         <button
           onclick={submitAssign}
-          disabled={assigning || loadingAssignees}
+          disabled={assigning || loadingAssignees || !assignmentChanged() || (!assignForm.engineerId && !assignForm.statePlannerId)}
           class="px-5 py-2.5 text-[13px] font-semibold text-white bg-orange-600 hover:bg-orange-700 rounded-lg transition-colors disabled:opacity-60 cursor-pointer"
         >
-          {assigning ? "Assigning…" : "Assign Ticket"}
+          {assigning ? "Saving…" : assignTarget.assignedEngineerId ? "Reassign Engineer" : "Assign Ticket"}
         </button>
       </div>
     </div>

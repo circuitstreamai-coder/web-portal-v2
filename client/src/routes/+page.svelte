@@ -1,7 +1,6 @@
 <script>
   import { goto } from "$app/navigation";
   import { onMount } from "svelte";
-  import { toast } from "svelte-sonner";
 
   let progress = $state(0);
   let showText = $state(false);
@@ -20,10 +19,9 @@
         setTimeout(() => {
           fadeOut = true;
           setTimeout(() => {
-            toast.success("Redirecting to login page...");
             goto("/login");
           }, 600);
-        }, 300);
+        });
       }
     }, 200);
 
