@@ -1,6 +1,6 @@
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and, asc, sql } from "drizzle-orm";
 import { db } from "../../db/db.js";
-import { users, roles, userRoles } from "../../db/schema/index.js";
+import { loginAliases, users, roles, userRoles } from "../../db/schema/index.js";
 import { verifyPassword, hashPassword } from "../../utils/hash.js";
 import type { AuthUser } from "./auth.schema.js";
 import { sendEmail, passwordResetEmail } from "../../services/email.js";
@@ -8,10 +8,14 @@ import { sendEmail, passwordResetEmail } from "../../services/email.js";
 const ALLOWED_STATUSES = ["active"];
 
 export async function loginUser(
-  email: string,
+  identity: string,
   password: string,
 ): Promise<{ user: AuthUser; jwtPayload: { id: string; email: string; role: string } }> {
-  const rows = await db
+  const normalizedIdentity = identity.trim().toLowerCase();
+
+  // A username alias explicitly selects its role. Email login remains
+  // backward compatible and uses the earliest active role assignment.
+  const aliasRows = await db
     .select({
       id: users.id,
       name: users.name,
@@ -22,20 +26,57 @@ export async function loginUser(
       role: roles.name,
       password: users.password,
     })
-    .from(users)
-    .leftJoin(
+    .from(loginAliases)
+    .innerJoin(users, and(eq(users.id, loginAliases.userId), eq(users.deleted, false)))
+    .innerJoin(roles, and(eq(roles.id, loginAliases.roleId), eq(roles.deleted, false)))
+    .innerJoin(
       userRoles,
-      and(eq(userRoles.userId, users.id), eq(userRoles.deleted, false)),
+      and(
+        eq(userRoles.userId, users.id),
+        eq(userRoles.roleId, roles.id),
+        eq(userRoles.deleted, false),
+      ),
     )
-    .leftJoin(
-      roles,
-      and(eq(roles.id, userRoles.roleId), eq(roles.deleted, false)),
+    .where(
+      and(
+        sql`lower(${loginAliases.username}) = ${normalizedIdentity}`,
+        eq(loginAliases.deleted, false),
+      ),
     )
-    .where(and(eq(users.email, email), eq(users.deleted, false)))
-    .orderBy(asc(userRoles.createdAt))
     .limit(1);
 
-  const row = rows[0];
+  const emailRows = aliasRows.length > 0
+    ? []
+    : await db
+      .select({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+        phone: users.phone,
+        status: users.status,
+        createdAt: users.createdAt,
+        role: roles.name,
+        password: users.password,
+      })
+      .from(users)
+      .leftJoin(
+        userRoles,
+        and(eq(userRoles.userId, users.id), eq(userRoles.deleted, false)),
+      )
+      .leftJoin(
+        roles,
+        and(eq(roles.id, userRoles.roleId), eq(roles.deleted, false)),
+      )
+      .where(
+        and(
+          sql`lower(${users.email}) = ${normalizedIdentity}`,
+          eq(users.deleted, false),
+        ),
+      )
+      .orderBy(asc(userRoles.createdAt))
+      .limit(1);
+
+  const row = aliasRows[0] ?? emailRows[0];
 
   if (!row) {
     throw { statusCode: 401, message: "Invalid credentials" };
@@ -87,7 +128,10 @@ export async function changeUserPassword(
   await db.update(users).set({ password: hashed }).where(eq(users.id, id));
 }
 
-export async function getCurrentUser(id: string): Promise<AuthUser> {
+export async function getCurrentUser(id: string, requestedRole?: string): Promise<AuthUser> {
+  const conditions = [eq(users.id, id), eq(users.deleted, false)];
+  if (requestedRole) conditions.push(eq(roles.name, requestedRole));
+
   const rows = await db
     .select({
       id: users.id,
@@ -108,7 +152,7 @@ export async function getCurrentUser(id: string): Promise<AuthUser> {
       roles,
       and(eq(roles.id, userRoles.roleId), eq(roles.deleted, false)),
     )
-    .where(and(eq(users.id, id), eq(users.deleted, false)))
+    .where(and(...conditions))
     .orderBy(asc(userRoles.createdAt))
     .limit(1);
 
