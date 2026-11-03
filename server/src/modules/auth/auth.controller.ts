@@ -58,7 +58,7 @@ export async function login(
   const { email, password } = req.body;
 
   if (!email || !password) {
-    return reply.code(400).send({ error: "Email and password are required" });
+    return reply.code(400).send({ error: "Username or email and password are required" });
   }
 
   const identity = getAuthIdentity(req, email);
@@ -125,7 +125,7 @@ export async function changePassword(
 
 export async function getMe(req: FastifyRequest, reply: FastifyReply) {
   try {
-    const user = await getCurrentUser(req.user.id);
+    const user = await getCurrentUser(req.user.id, req.user.role);
     return reply.send({ user });
   } catch (err: any) {
     return reply

@@ -64,6 +64,13 @@
       "when": 1786740200000,
       "tag": "0008_backfill_customer_projects",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793692800000,
+      "tag": "0009_add_login_aliases",
+      "breakpoints": true
     }
   ]
 }

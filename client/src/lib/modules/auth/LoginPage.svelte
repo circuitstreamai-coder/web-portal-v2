@@ -24,10 +24,6 @@
 
 	// ── Helpers ────────────────────────────────────────────────────────────
 
-	function validateEmail(v: string) {
-		return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
-	}
-
 	function validate(): boolean {
 		emailError = '';
 		passwordError = '';
@@ -36,10 +32,7 @@
 		let valid = true;
 
 		if (!email.trim()) {
-			emailError = 'Email is required';
-			valid = false;
-		} else if (!validateEmail(email.trim())) {
-			emailError = 'Enter a valid email address';
+			emailError = 'Username or email is required';
 			valid = false;
 		}
 
@@ -78,7 +71,7 @@
 		} catch (err) {
 			if (err instanceof ApiError) {
 				if (err.status === 401 || err.status === 403) {
-					formError = 'Invalid email or password.';
+					formError = 'Invalid username/email or password.';
 				} else if (err.status >= 500) {
 					formError = 'Server error. Please try again later.';
 				} else {
@@ -148,13 +141,13 @@
 			{/if}
 
 			<form onsubmit={handleSubmit} class="flex flex-col gap-5" novalidate>
-				<!-- Email -->
+				<!-- Username or email -->
 				<Input
-					type="email"
+					type="text"
 					id="email"
 					name="email"
-					placeholder="E-mail"
-					autocomplete="email"
+					placeholder="Username or e-mail"
+					autocomplete="username"
 					required
 					bind:value={email}
 					error={emailError}
