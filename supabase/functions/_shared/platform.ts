@@ -107,7 +107,9 @@ export async function authenticate(request: Request): Promise<PortalAuth> {
 
   const roles = (roleRows ?? []).map((row) => row.name);
   const requestedRole = request.headers.get("x-portal-role")?.trim();
-  const role = requestedRole && roles.includes(requestedRole) ? requestedRole : roles[0];
+  const configuredRole = String(authData.user.app_metadata?.role ?? "");
+  const defaultRole = roles.includes(configuredRole) ? configuredRole : roles[0];
+  const role = requestedRole && roles.includes(requestedRole) ? requestedRole : defaultRole;
   if (!role) throw { status: 403, message: "No active portal role is assigned" };
 
   const roleRow = (roleRows ?? []).find((row) => row.name === role);

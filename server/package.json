@@ -12,6 +12,8 @@
     "db:seed": "tsx --env-file=.env ./src/db/seed-run.ts",
     "db:seed:demo": "tsx --env-file=.env ./src/db/demo-seed-run.ts",
     "db:import-app-users": "tsx --env-file=.env ./src/db/import-app-users.ts",
+    "db:import-app-users:prod": "tsx ./src/db/import-app-users-supabase.ts",
+    "email:app-user-logins": "tsx ./src/db/send-app-login-emails.ts",
     "db:migrate:prod": "node dist/src/db/migrate.js",
     "db:truncate": "tsx --env-file=.env ./src/db/truncate.ts",
     "db:studio": "drizzle-kit studio"
